@@ -1,0 +1,121 @@
+# ===========================================
+# Zero-Touch Customs Engine - .gitignore
+# ===========================================
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# ── IDE / Editor ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Environment Variables ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ── Docker ──────────────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Logs & Debug ────────────────────────────────────────────────────────────
+*.log
+logs/
+*.stackdump
+bash.exe.stackdump
+
+# ── Test & Coverage ─────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# ── Model Files (Large) ──────────────────────────────────────────────────────
+# Model weights should be downloaded via download_model.py
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+
+# Model directories (except config files)
+# The best_model/ directory contains config.json, tokenizer.json, etc.
+# The actual weights (model.safetensors) should be downloaded separately
+
+# ── Training Artifacts ───────────────────────────────────────────────────────
+# These are in the training/ directory - exclude unless explicitly tracked
+training/__pycache__/
+training/*.pyc
+training/output/
+training/checkpoints/
+training/runs/
+*.ckpt
+wandb/
+
+# ── Temporary & Output Files ─────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+
+# Output directories from batch processing
+ml/output/
+ml/out.txt
+ml/batch_output.txt
+ml/ocr_results.json
+
+# Rendered pages (from OCR processing)
+ml/data/rendered/
+
+# ── Database ─────────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Excel & Document Output ──────────────────────────────────────────────────
+*.xlsx~
+*.xls~
+downloads/
+
+# ── Jupyter Notebooks ────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Build Artifacts ──────────────────────────────────────────────────────────
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.bak
+.cache/
+*.pid

@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero-Touch Customs Engine</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="/static/images/logo.png" alt="Logo" class="sidebar-logo" />
+        <div class="sidebar-brand">
+          <h1 class="sidebar-title">Zero-Touch</h1>
+          <span class="sidebar-subtitle">Customs Engine</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item active">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Smart Upload</span>
+        </a>
+        <a href="/declarations" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 5v6c0 1.657 4.03 3 9 3s9-1.343 9-3V5" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 11v6c0 1.657 4.03 3 9 3s9-1.343 9-3v-6" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Declarations</span>
+        </a>
+        <a href="#" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Activity</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status">
+          <div class="status-dot online"></div>
+          <span>System Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Upload Section -->
+      <section class="upload-section">
+        <div class="upload-header">
+          <h2>Smart Upload</h2>
+          <p class="upload-desc">
+            Upload your customs documents — Commercial Invoice, Packing List, and Bill of Lading.
+            Our AI engine will extract and validate the data automatically.
+          </p>
+        </div>
+
+        <!-- AJU Number Input -->
+        <div class="aju-input-section">
+          <div class="aju-input-wrapper">
+            <label for="aju-number" class="aju-label">
+              <svg class="aju-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 12h6M9 16h6M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="13" y1="3" x2="13" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="17" y1="3" x2="17" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Nomor AJU
+            </label>
+            <input type="text" id="aju-number" class="aju-input" placeholder="Contoh: 000016GEY55320260609000072" />
+            <span class="aju-hint">Nomor AJU akan digunakan sebagai ID shipment di CEISA 4.0</span>
+          </div>
+        </div>
+
+        <div class="doc-cards">
+          <!-- Commercial Invoice -->
+          <div class="doc-card" id="card-ci">
+            <div class="doc-card-header">
+              <span class="doc-label">Commercial Invoice</span>
+              <span class="doc-badge">CI</span>
+            </div>
+            <div class="drop-zone"
+                 id="drop-ci"
+                 data-doc="CI"
+                 ondragover="onDragOver(event)"
+                 ondragleave="onDragLeave(event)"
+                 onclick="triggerFileInput('ci-input')">
+              <div class="drop-zone-content">
+                <svg class="drop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <p class="drop-text">Drop file or click to browse</p>
+                <span class="file-hint">PDF, PNG, JPG, JPEG, TIFF • Max 20 MB</span>
+              </div>
+            </div>
+            <input type="file" id="ci-input" class="file-input-hidden"
+                   accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
+                   onchange="onFileSelected(this, 'CI')" />
+            <div class="file-preview" id="preview-ci" style="display:none;">
+              <div class="file-info">
+                <span class="file-name" id="ci-name"></span>
+                <span class="file-size" id="ci-size"></span>
+              </div>
+              <button class="remove-btn" onclick="removeFile('CI')" title="Remove file">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Packing List -->
+          <div class="doc-card" id="card-pl">
+            <div class="doc-card-header">
+              <span class="doc-label">Packing List</span>
+              <span class="doc-badge">PL</span>
+            </div>
+            <div class="drop-zone"
+                 id="drop-pl"
+                 data-doc="PL"
+                 ondragover="onDragOver(event)"
+                 ondragleave="onDragLeave(event)"
+                 onclick="triggerFileInput('pl-input')">
+              <div class="drop-zone-content">
+                <svg class="drop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <p class="drop-text">Drop file or click to browse</p>
+                <span class="file-hint">PDF, PNG, JPG, JPEG, TIFF • Max 20 MB</span>
+              </div>
+            </div>
+            <input type="file" id="pl-input" class="file-input-hidden"
+                   accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
+                   onchange="onFileSelected(this, 'PL')" />
+            <div class="file-preview" id="preview-pl" style="display:none;">
+              <div class="file-info">
+                <span class="file-name" id="pl-name"></span>
+                <span class="file-size" id="pl-size"></span>
+              </div>
+              <button class="remove-btn" onclick="removeFile('PL')" title="Remove file">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Bill of Lading -->
+          <div class="doc-card" id="card-bl">
+            <div class="doc-card-header">
+              <span class="doc-label">Bill of Lading</span>
+              <span class="doc-badge">BL</span>
+            </div>
+            <div class="drop-zone"
+                 id="drop-bl"
+                 data-doc="BL"
+                 ondragover="onDragOver(event)"
+                 ondragleave="onDragLeave(event)"
+                 onclick="triggerFileInput('bl-input')">
+              <div class="drop-zone-content">
+                <svg class="drop-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M8 7h8M8 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <p class="drop-text">Drop file or click to browse</p>
+                <span class="file-hint">PDF, PNG, JPG, JPEG, TIFF • Max 20 MB</span>
+              </div>
+            </div>
+            <input type="file" id="bl-input" class="file-input-hidden"
+                   accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp"
+                   onchange="onFileSelected(this, 'BL')" />
+            <div class="file-preview" id="preview-bl" style="display:none;">
+              <div class="file-info">
+                <span class="file-name" id="bl-name"></span>
+                <span class="file-size" id="bl-size"></span>
+              </div>
+              <button class="remove-btn" onclick="removeFile('BL')" title="Remove file">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Bar Section -->
+        <div class="progress-section" id="progress-section" style="display: none;">
+          <div class="progress-header">
+            <span class="progress-label" id="progress-label">Processing documents...</span>
+            <span class="progress-percent" id="progress-percent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-steps" id="progress-steps">
+            <div class="progress-step" data-step="upload">
+              <span class="step-indicator"></span>
+              <span class="step-label">Upload</span>
+            </div>
+            <div class="progress-step" data-step="ocr">
+              <span class="step-indicator"></span>
+              <span class="step-label">OCR</span>
+            </div>
+            <div class="progress-step" data-step="extract">
+              <span class="step-indicator"></span>
+              <span class="step-label">Extract</span>
+            </div>
+            <div class="progress-step" data-step="validate">
+              <span class="step-indicator"></span>
+              <span class="step-label">Validate</span>
+            </div>
+            <div class="progress-step" data-step="export">
+              <span class="step-indicator"></span>
+              <span class="step-label">Export</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- File count badge + Run button -->
+        <div class="action-row">
+          <div class="file-count-badge" id="file-count-badge">
+            <span id="file-count-text">No files selected</span>
+          </div>
+          <button class="run-pipeline-btn" id="run-btn" onclick="runPipeline()" disabled>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span id="run-btn-text">Run OCR Pipeline</span>
+            <span class="spinner" id="spinner" style="display:none;"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Status Panel -->
+      <section class="status-section" id="status-section" style="display:none;">
+        <div class="status-card" id="status-card">
+          <div class="status-icon" id="status-icon"></div>
+          <div class="status-body">
+            <p class="status-title" id="status-title"></p>
+            <p class="status-message" id="status-message"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Results Summary Section -->
+      <section class="results-section" id="results-section" style="display: none;">
+        <div class="results-header">
+          <h3>Extraction Results</h3>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span class="results-badge" id="results-badge">Complete</span>
+            <button class="save-btn" id="save-btn" onclick="saveToDeclarations()">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="17 21 17 13 7 13 7 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="7 3 7 8 15 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Save to Declarations</span>
+            </button>
+          </div>
+        </div>
+        <div class="results-grid">
+          <!-- Confidence Score -->
+          <div class="result-card confidence-card">
+            <div class="result-icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="result-content">
+              <span class="result-value" id="confidence-value">--</span>
+              <span class="result-label">Confidence Score</span>
+            </div>
+            <div class="confidence-bar">
+              <div class="confidence-fill" id="confidence-fill"></div>
+            </div>
+          </div>
+
+          <!-- Documents Processed -->
+          <div class="result-card">
+            <div class="result-icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="result-content">
+              <span class="result-value" id="docs-count">--</span>
+              <span class="result-label">Documents Processed</span>
+            </div>
+          </div>
+
+          <!-- Items Extracted -->
+          <div class="result-card">
+            <div class="result-icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="8" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="8" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="8" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="3" y1="6" x2="3.01" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="3" y1="12" x2="3.01" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="3" y1="18" x2="3.01" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="result-content">
+              <span class="result-value" id="items-count">--</span>
+              <span class="result-label">Items Extracted</span>
+            </div>
+          </div>
+
+          <!-- Processing Time -->
+          <div class="result-card">
+            <div class="result-icon">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="result-content">
+              <span class="result-value" id="time-value">--</span>
+              <span class="result-label">Processing Time</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Field Analysis -->
+        <div class="field-analysis">
+          <h4>Extracted Header Fields</h4>
+          <div class="field-list" id="field-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Line Items Table -->
+        <div class="line-items-section" id="line-items-section" style="display: none;">
+          <h4>Extracted Line Items</h4>
+          <div class="table-container">
+            <table class="items-table" id="items-table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>HS Code</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Unit Price</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="items-tbody">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Quality Warnings -->
+        <div class="quality-warnings" id="quality-warnings" style="display: none;">
+          <h4>Quality Warnings</h4>
+          <div class="warnings-list" id="warnings-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // ── State ────────────────────────────────────────────────────────────────
+    const state = {
+      files: { CI: null, PL: null, BL: null },
+      processing: false,
+      startTime: null,
+      lastExtractionResult: null,  // Store extraction result for saving
+    };
+
+    // ── Drag & Drop ─────────────────────────────────────────────────────────
+    function onDragOver(event) {
+      event.preventDefault();
+      event.currentTarget.classList.add('drag-over');
+    }
+
+    function onDragLeave(event) {
+      event.currentTarget.classList.remove('drag-over');
+    }
+
+    function triggerFileInput(id) {
+      document.getElementById(id).click();
+    }
+
+    // ── File Selection ───────────────────────────────────────────────────────
+    function onFileSelected(input, docType) {
+      const file = input.files[0];
+      if (!file) return;
+
+      // Validate size (20 MB)
+      if (file.size > 20 * 1024 * 1024) {
+        showStatus('error', 'File Too Large',
+          `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)} MB. Maximum: 20 MB.`);
+        input.value = '';
+        return;
+      }
+
+      state.files[docType] = file;
+      updateUI(docType, file);
+    }
+
+    function removeFile(docType) {
+      state.files[docType] = null;
+      const input = document.getElementById(`${docType.toLowerCase()}-input`);
+      if (input) input.value = '';
+      updateUI(docType, null);
+    }
+
+    function updateUI(docType, file) {
+      const drop = document.getElementById(`drop-${docType.toLowerCase()}`);
+      const preview = document.getElementById(`preview-${docType.toLowerCase()}`);
+      const nameEl = document.getElementById(`${docType.toLowerCase()}-name`);
+      const sizeEl = document.getElementById(`${docType.toLowerCase()}-size`);
+      const card = document.getElementById(`card-${docType.toLowerCase()}`);
+
+      if (file) {
+        drop.style.display = 'none';
+        preview.style.display = 'flex';
+        nameEl.textContent = file.name;
+        sizeEl.textContent = formatBytes(file.size);
+        card.classList.add('has-file');
+      } else {
+        drop.style.display = 'flex';
+        preview.style.display = 'none';
+        nameEl.textContent = '';
+        sizeEl.textContent = '';
+        card.classList.remove('has-file');
+      }
+
+      updateFileCountBadge();
+      updateRunButton();
+    }
+
+    function updateFileCountBadge() {
+      const count = Object.values(state.files).filter(Boolean).length;
+      const badge = document.getElementById('file-count-badge');
+      const text = document.getElementById('file-count-text');
+
+      if (count === 0) {
+        text.textContent = 'No files selected';
+        badge.className = 'file-count-badge';
+      } else {
+        text.textContent = `${count} file${count > 1 ? 's' : ''} selected`;
+        badge.className = 'file-count-badge has-files';
+      }
+    }
+
+    function updateRunButton() {
+      const btn = document.getElementById('run-btn');
+      const hasFiles = Object.values(state.files).some(Boolean);
+      btn.disabled = !hasFiles || state.processing;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // ── Progress Bar ─────────────────────────────────────────────────────────
+    function setProgress(percent, step) {
+      const fill = document.getElementById('progress-fill');
+      const percentEl = document.getElementById('progress-percent');
+      const labelEl = document.getElementById('progress-label');
+
+      fill.style.width = `${percent}%`;
+      percentEl.textContent = `${Math.round(percent)}%`;
+
+      const stepLabels = {
+        0: 'Uploading documents...',
+        20: 'Running OCR engine...',
+        40: 'Extracting entities...',
+        60: 'Validating data...',
+        80: 'Generating CEISA 4.0...',
+        100: 'Finalizing...',
+      };
+
+      if (step !== undefined) {
+        labelEl.textContent = stepLabels[step] || 'Processing...';
+
+        // Update step indicators
+        document.querySelectorAll('.progress-step').forEach(el => {
+          const elStep = parseInt(el.dataset.step === 'upload' ? 0 :
+                                  el.dataset.step === 'ocr' ? 20 :
+                                  el.dataset.step === 'extract' ? 40 :
+                                  el.dataset.step === 'validate' ? 60 : 80);
+          if (step >= elStep) {
+            el.classList.add('completed');
+          } else if (step === elStep - 20) {
+            el.classList.add('active');
+          } else {
+            el.classList.remove('completed', 'active');
+          }
+        });
+      }
+    }
+
+    function showProgress() {
+      document.getElementById('progress-section').style.display = 'block';
+      document.getElementById('results-section').style.display = 'none';
+      setProgress(0);
+
+      // Reset step indicators
+      document.querySelectorAll('.progress-step').forEach(el => {
+        el.classList.remove('completed', 'active');
+      });
+    }
+
+    function hideProgress() {
+      document.getElementById('progress-section').style.display = 'none';
+    }
+
+    function showResults(data, fullData) {
+      const resultsSection = document.getElementById('results-section');
+      resultsSection.style.display = 'block';
+
+      // Update metrics
+      document.getElementById('confidence-value').textContent = data.confidence || '--';
+      document.getElementById('docs-count').textContent = data.docsCount || 0;
+      document.getElementById('items-count').textContent = data.itemsCount || 0;
+      document.getElementById('time-value').textContent = data.processingTime || '--';
+
+      // Update confidence bar
+      const confidenceFill = document.getElementById('confidence-fill');
+      const confValue = parseFloat(data.confidence) || 0;
+      confidenceFill.style.width = `${confValue}%`;
+
+      // Update badge
+      const badge = document.getElementById('results-badge');
+      if (confValue >= 80) {
+        badge.textContent = 'High Confidence';
+        badge.className = 'results-badge high';
+      } else if (confValue >= 60) {
+        badge.textContent = 'Medium Confidence';
+        badge.className = 'results-badge medium';
+      } else {
+        badge.textContent = 'Review Required';
+        badge.className = 'results-badge low';
+      }
+
+      // Populate header fields from real data
+      const fieldList = document.getElementById('field-list');
+      const headerFields = fullData?.header_fields || {};
+
+      if (Object.keys(headerFields).length > 0) {
+        fieldList.innerHTML = Object.entries(headerFields)
+          .map(([fieldName, fieldData]) => {
+            const conf = fieldData.confidence || 0;
+            const statusClass = conf >= 80 ? 'high' : conf >= 60 ? 'medium' : 'low';
+            const statusText = conf >= 80 ? 'High' : conf >= 60 ? 'Medium' : 'Low';
+            return `
+              <div class="field-item">
+                <div class="field-info">
+                  <span class="field-name">${fieldName}</span>
+                  <span class="field-value">${fieldData.value || '--'}</span>
+                </div>
+                <span class="field-status ${statusClass}">${statusText} (${conf}%)</span>
+              </div>
+            `;
+          }).join('');
+      } else {
+        fieldList.innerHTML = `
+          <div class="field-item">
+            <span class="field-name">No header fields extracted</span>
+            <span class="field-status medium">--</span>
+          </div>
+        `;
+      }
+
+      // Populate line items table
+      const lineItemsSection = document.getElementById('line-items-section');
+      const itemsTableBody = document.getElementById('items-tbody');
+      const lineItems = fullData?.line_items || [];
+
+      if (lineItems.length > 0) {
+        lineItemsSection.style.display = 'block';
+        itemsTableBody.innerHTML = lineItems.map(item => `
+          <tr>
+            <td>${item.description || '--'}</td>
+            <td>${item.hs_code || '--'}</td>
+            <td>${item.quantity || '--'}</td>
+            <td>${item.unit || '--'}</td>
+            <td>${item.unit_price || '--'}</td>
+            <td>${item.amount || '--'}</td>
+          </tr>
+        `).join('');
+      } else {
+        lineItemsSection.style.display = 'none';
+      }
+
+      // Show quality warnings if low confidence
+      const warningsSection = document.getElementById('quality-warnings');
+      const warningsList = document.getElementById('warnings-list');
+      const qualityReport = fullData?.quality_report || {};
+
+      if (confValue < 60 || qualityReport.header_fields_missing?.length > 0) {
+        warningsSection.style.display = 'block';
+        let warningHtml = '';
+
+        if (confValue < 60) {
+          warningHtml += `
+            <div class="warning-item">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>Low extraction confidence (${confValue}%). Please review extracted data manually before submission.</span>
+            </div>
+          `;
+        }
+
+        if (qualityReport.header_fields_missing?.length > 0) {
+          warningHtml += `
+            <div class="warning-item">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>Missing header fields: ${qualityReport.header_fields_missing.join(', ')}</span>
+            </div>
+          `;
+        }
+
+        warningsList.innerHTML = warningHtml;
+      } else {
+        warningsSection.style.display = 'none';
+      }
+
+      // Scroll to results
+      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ── Run Pipeline ────────────────────────────────────────────────────────
+    async function runPipeline() {
+      if (state.processing) return;
+
+      const uploaded = Object.entries(state.files)
+        .filter(([, f]) => f !== null)
+        .reduce((acc, [k, v]) => { acc[k] = v; return acc; }, {});
+
+      if (Object.keys(uploaded).length === 0) {
+        showStatus('error', 'No Files Selected',
+          'Please upload at least one document (CI, PL, or BL).');
+        return;
+      }
+
+      state.processing = true;
+      state.startTime = Date.now();
+      hideStatus();
+      showProgress();
+      setProcessing(true);
+
+      const formData = new FormData();
+      for (const [docType, file] of Object.entries(uploaded)) {
+        formData.append(docType, file);
+      }
+
+      // Add AJU number as shipment_id
+      const ajuNumber = document.getElementById('aju-number').value.trim();
+      if (ajuNumber) {
+        formData.append('shipment_id', ajuNumber);
+      }
+
+      try {
+        // Progress: Uploading
+        setProgress(5, 0);
+
+        const response = await fetch('/api/extract', {
+          method: 'POST',
+          body: formData,
+        });
+
+        // Progress: OCR running
+        setProgress(20, 20);
+
+        if (!response.ok) {
+          let errorMsg = `Server error: ${response.status} ${response.statusText}`;
+          try {
+            const errData = await response.json();
+            if (errData.detail) errorMsg = errData.detail;
+          } catch (_) {}
+          throw new Error(errorMsg);
+        }
+
+        // Progress: Extracting entities
+        setProgress(40, 40);
+
+        // Parse JSON response (new format without result wrapper)
+        const jsonData = await response.json();
+        state.lastExtractionResult = jsonData;  // Store for later saving
+
+        // Progress: Validating data
+        setProgress(60, 60);
+
+        // Decode base64 and trigger download
+        const byteCharacters = atob(jsonData.excel_base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+
+        // Progress: Generating Excel
+        setProgress(80, 80);
+
+        // Trigger download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = jsonData.filename || 'extraction.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // Progress: Finalizing
+        setProgress(100, 100);
+
+        // Show results with real data from backend
+        setTimeout(() => {
+          hideProgress();
+          showResults({
+            confidence: jsonData.confidence,
+            docsCount: jsonData.documents_processed.length,
+            itemsCount: jsonData.items_count,
+            processingTime: jsonData.processing_time_seconds + 's',
+            qualityScore: jsonData.quality_score,
+            fieldsExtracted: {},
+          }, jsonData);  // Pass full response for header_fields and line_items
+
+          showStatus('success', 'Extraction Complete',
+            `CEISA 4.0 Excel file "${jsonData.filename}" has been downloaded. ` +
+            `Click "Save to Declarations" to save this result.`);
+        }, 500);
+
+      } catch (err) {
+        console.error('Extraction error:', err);
+        hideProgress();
+        showStatus('error', 'Extraction Failed', err.message || 'An unknown error occurred.');
+      } finally {
+        state.processing = false;
+        setProcessing(false);
+      }
+    }
+
+    // ── Save to Declarations ──────────────────────────────────────────────────
+    async function saveToDeclarations() {
+      const saveBtn = document.getElementById('save-btn');
+      if (!state.lastExtractionResult) {
+        showStatus('error', 'No Result', 'Please run extraction first.');
+        return;
+      }
+
+      // Disable button during save
+      saveBtn.disabled = true;
+      saveBtn.querySelector('span').textContent = 'Saving...';
+
+      try {
+        const result = state.lastExtractionResult;
+
+        const response = await fetch('/api/shipments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            aju_number: result.aju_number || document.getElementById('aju-number').value.trim(),
+            excel_filename: result.filename,
+            documents_processed: result.documents_processed,
+            total_amount: result.total_amount,
+            extraction_confidence: result.extraction_confidence,
+            quality_score: result.quality_score,
+            status: result.status,
+            header_fields: result.header_fields,
+            line_items: result.line_items,
+            quality_report: result.quality_report,
+            excel_base64: result.excel_base64,
+            file_size_kb: Math.round(atob(result.excel_base64).length / 1024),
+          }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.detail || 'Failed to save');
+        }
+
+        const data = await response.json();
+        showStatus('success', 'Saved!', `Declaration "${data.reference_code}" saved successfully.`);
+
+        // Clear the stored result
+        state.lastExtractionResult = null;
+
+      } catch (err) {
+        console.error('Save error:', err);
+        showStatus('error', 'Save Failed', err.message || 'Could not save to declarations.');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.querySelector('span').textContent = 'Save to Declarations';
+      }
+    }
+
+    function setProcessing(val) {
+      const btn = document.getElementById('run-btn');
+      const btnText = document.getElementById('run-btn-text');
+      const spinner = document.getElementById('spinner');
+
+      if (val) {
+        btn.disabled = true;
+        btnText.textContent = 'Processing…';
+        spinner.style.display = 'inline-block';
+        btn.classList.add('processing');
+      } else {
+        btn.disabled = Object.values(state.files).every(f => !f);
+        btnText.textContent = 'Run OCR Pipeline';
+        spinner.style.display = 'none';
+        btn.classList.remove('processing');
+        updateRunButton();
+      }
+    }
+
+    // ── Status Panel ─────────────────────────────────────────────────────────
+    function showStatus(type, title, message) {
+      const section = document.getElementById('status-section');
+      const card = document.getElementById('status-card');
+      const icon = document.getElementById('status-icon');
+      const titleEl = document.getElementById('status-title');
+      const msgEl = document.getElementById('status-message');
+
+      section.style.display = 'block';
+      card.className = `status-card status-${type}`;
+
+      if (type === 'success') {
+        icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M22 4L12 14.01l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+      } else {
+        icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>`;
+      }
+
+      titleEl.textContent = title;
+      msgEl.textContent = message;
+
+      // Scroll to status
+      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function hideStatus() {
+      document.getElementById('status-section').style.display = 'none';
+    }
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    updateFileCountBadge();
+    updateRunButton();
+  </script>
+</body>
+</html>
