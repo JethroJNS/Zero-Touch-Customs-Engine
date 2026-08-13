@@ -103,6 +103,56 @@ class Shipment(Base):
     updated_at = Column(DateTime, default=get_local_time, onupdate=get_local_time)
 
 
+# ── Activity / Audit Log Enums & Model ─────────────────────────────────────────
+class ActivityAction(str, enum.Enum):
+    OCR_PROCESS = "OCR Process"
+    DECLARATION_CREATE = "Declaration Create"
+    DECLARATION_UPDATE = "Declaration Update"
+    DECLARATION_DELETE = "Declaration Delete"
+    DECLARATION_SEND = "Declaration Send"
+    DECLARATION_APPROVE = "Declaration Approve"
+    DECLARATION_REJECT = "Declaration Reject"
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    action = Column(String(50), nullable=False, index=True)
+    description = Column(String(500), nullable=False)
+    entity_type = Column(String(30), nullable=True)  # "shipment"
+    entity_id = Column(Integer, nullable=True, index=True)
+    reference_code = Column(String(30), nullable=True, index=True)
+    event_data = Column(Text, nullable=True)  # JSON string
+    status = Column(String(30), nullable=True)  # "success", "failed", "approved", etc.
+    created_at = Column(DateTime, default=get_local_time)
+
+
+async def create_activity(
+    db: AsyncSession,
+    action: ActivityAction,
+    description: str,
+    entity_type: str = "shipment",
+    entity_id: int = None,
+    reference_code: str = None,
+    metadata: dict = None,
+    status: str = "success",
+):
+    """Insert an activity log entry."""
+    act = Activity(
+        action=action.value,
+        description=description,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        reference_code=reference_code,
+        event_data=json.dumps(metadata) if metadata else None,
+        status=status,
+    )
+    db.add(act)
+    await db.commit()
+    return act
+
+
 # ── Database dependency ────────────────────────────────────────────────────────
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
@@ -199,7 +249,7 @@ def _seed_data():
 
                 # Draft Invalid (Needs Review)
                 {"aju_number": "AJU-2026-0018", "reference_code": "CD-JQVSDCE", "filename": "INV-2026-0018.pdf", "excel_filename": "AJU-2026-0018_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 518,500.00", "extraction_confidence": 0.45, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 156, "created_at": now, "updated_at": now},
-                {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.55, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201, "created_at": now, "updated_at": now},
+                {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.40, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201, "created_at": now, "updated_at": now},
 
                 # Failed
                 {"aju_number": "AJU-2026-0510", "reference_code": "CD-ABCFGH12", "filename": "INV-2026-0510.pdf", "excel_filename": "AJU-2026-0510_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 12,340,000.00", "extraction_confidence": 0.0, "quality_score": "low", "status": ShipmentStatus.FAILED, "file_size_kb": 45, "created_at": now, "updated_at": now},
@@ -213,6 +263,37 @@ def _seed_data():
                 db.add(Shipment(**data))
             db.commit()
             logger.info(f"Auto-seeded {len(samples)} sample shipments.")
+
+            # Seed activity log entries
+            from datetime import timedelta
+
+            activity_samples = [
+                {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL", "BL"], "confidence": 98, "items_extracted": 12, "processing_time_seconds": 3.2, "quality_score": "high"}), "status": "success", "created_at": now},
+                {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL"], "confidence": 92, "items_extracted": 8, "processing_time_seconds": 2.8, "quality_score": "high"}), "status": "success", "created_at": now - timedelta(minutes=5)},
+                {"action": "Declaration Create", "description": "Created declaration CD-UCCCDEP1.", "entity_type": "shipment", "entity_id": 1, "reference_code": "CD-UCCCDEP1", "event_data": json.dumps({"aju_number": "AJU-2025-1201", "confidence": 92, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(minutes=10)},
+                {"action": "Declaration Create", "description": "Created declaration CD-GT8GJ4H1.", "entity_type": "shipment", "entity_id": 2, "reference_code": "CD-GT8GJ4H1", "event_data": json.dumps({"aju_number": "AJU-2025-1002", "confidence": 88, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(minutes=15)},
+                {"action": "Declaration Create", "description": "Created declaration CD-TBNZQK7Y.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(minutes=25)},
+                {"action": "Declaration Send", "description": "Submitted declaration CD-TBNZQK7Y to CEISA simulation.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98}), "status": "sent", "created_at": now - timedelta(minutes=30)},
+                {"action": "Declaration Approve", "description": "Declaration CD-TBNZQK7Y approved by CEISA.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98, "cesa_ref": "CESA-CCEPI"}), "status": "approved", "created_at": now - timedelta(minutes=31)},
+                {"action": "Declaration Create", "description": "Created declaration CD-QAWBPENN.", "entity_type": "shipment", "entity_id": 4, "reference_code": "CD-QAWBPENN", "event_data": json.dumps({"aju_number": "AJU-2026-0315", "confidence": 85, "quality_score": "medium", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(hours=1)},
+                {"action": "Declaration Create", "description": "Created declaration CD-PRTVWXYZ.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=1, minutes=10)},
+                {"action": "Declaration Send", "description": "Submitted declaration CD-PRTVWXYZ to CEISA simulation.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95}), "status": "sent", "created_at": now - timedelta(hours=1, minutes=15)},
+                {"action": "Declaration Approve", "description": "Declaration CD-PRTVWXYZ approved by CEISA.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95}), "status": "approved", "created_at": now - timedelta(hours=1, minutes=16)},
+                {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL", "BL"], "confidence": 45, "items_extracted": 5, "processing_time_seconds": 4.1, "quality_score": "low"}), "status": "failed", "created_at": now - timedelta(hours=2)},
+                {"action": "Declaration Create", "description": "Created declaration CD-JQVSDCE.", "entity_type": "shipment", "entity_id": 7, "reference_code": "CD-JQVSDCE", "event_data": json.dumps({"aju_number": "AJU-2026-0018", "confidence": 45, "quality_score": "low", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=2, minutes=5)},
+                {"action": "Declaration Create", "description": "Created declaration CD-SENT001.", "entity_type": "shipment", "entity_id": 6, "reference_code": "CD-SENT001", "event_data": json.dumps({"aju_number": "AJU-2026-0618", "confidence": 99, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(hours=3)},
+                {"action": "Declaration Send", "description": "Submitted declaration CD-SENT001 to CEISA simulation.", "entity_type": "shipment", "entity_id": 6, "reference_code": "CD-SENT001", "event_data": json.dumps({"aju_number": "AJU-2026-0618", "confidence": 99}), "status": "sent", "created_at": now - timedelta(hours=3, minutes=5)},
+                {"action": "Declaration Create", "description": "Created declaration CD-DIVERSE1.", "entity_type": "shipment", "entity_id": 10, "reference_code": "CD-DIVERSE1", "event_data": json.dumps({"aju_number": "AJU-2026-0701", "confidence": 78, "quality_score": "medium", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(hours=4)},
+                {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI"], "confidence": 91, "items_extracted": 10, "processing_time_seconds": 2.1, "quality_score": "high"}), "status": "success", "created_at": now - timedelta(hours=5)},
+                {"action": "Declaration Create", "description": "Created declaration CD-DIVERSE2.", "entity_type": "shipment", "entity_id": 11, "reference_code": "CD-DIVERSE2", "event_data": json.dumps({"aju_number": "AJU-2026-0702", "confidence": 91, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=5, minutes=10)},
+                {"action": "Declaration Create", "description": "Created declaration CD-ABCFGH12.", "entity_type": "shipment", "entity_id": 9, "reference_code": "CD-ABCFGH12", "event_data": json.dumps({"aju_number": "AJU-2026-0510", "confidence": 0, "quality_score": "low", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(days=1)},
+                {"action": "Declaration Reject", "description": "Declaration CD-ABCFGH12 rejected by CEISA.", "entity_type": "shipment", "entity_id": 9, "reference_code": "CD-ABCFGH12", "event_data": json.dumps({"aju_number": "AJU-2026-0510", "confidence": 0, "error": "Invalid HS Code"}), "status": "failed", "created_at": now - timedelta(days=1, hours=1)},
+            ]
+
+            for act_data in activity_samples:
+                db.add(Activity(**act_data))
+            db.commit()
+            logger.info(f"Auto-seeded {len(activity_samples)} activity records.")
         finally:
             db.close()
     except Exception as e:
@@ -248,7 +329,7 @@ async def seed_database():
             {"aju_number": "AJU-2026-0618", "reference_code": "CD-SENT001", "filename": "INV-2026-0618.pdf", "excel_filename": "AJU-2026-0618_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 456,000,000.00", "extraction_confidence": 0.99, "quality_score": "high", "status": ShipmentStatus.SENT, "file_size_kb": 245},
             # Draft Invalid (Needs Review)
             {"aju_number": "AJU-2026-0018", "reference_code": "CD-JQVSDCE", "filename": "INV-2026-0018.pdf", "excel_filename": "AJU-2026-0018_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 518,500.00", "extraction_confidence": 0.45, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 156},
-            {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.55, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201},
+            {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.40, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201},
             # Failed
             {"aju_number": "AJU-2026-0510", "reference_code": "CD-ABCFGH12", "filename": "INV-2026-0510.pdf", "excel_filename": "AJU-2026-0510_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 12,340,000.00", "extraction_confidence": 0.0, "quality_score": "low", "status": ShipmentStatus.FAILED, "file_size_kb": 45},
             # More diverse
@@ -261,6 +342,51 @@ async def seed_database():
         db.commit()
         logger.info(f"Seeded {len(samples)} sample shipments.")
         return {"message": f"Seeded {len(samples)} sample shipments."}
+    finally:
+        db.close()
+
+
+@app.post("/api/seed/activities", tags=["dev"])
+async def seed_activities():
+    """Seed the activities table with sample audit log records.
+    Safe to call multiple times — always replaces existing activity records.
+    """
+    from datetime import timedelta
+    db = SessionLocal()
+    try:
+        # Clear existing activities first so it's always fresh
+        db.query(Activity).delete()
+        db.commit()
+
+        now = get_local_time()
+        samples = [
+            {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL", "BL"], "confidence": 98, "items_extracted": 12, "processing_time_seconds": 3.2, "quality_score": "high"}), "status": "success", "created_at": now},
+            {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL"], "confidence": 92, "items_extracted": 8, "processing_time_seconds": 2.8, "quality_score": "high"}), "status": "success", "created_at": now - timedelta(minutes=5)},
+            {"action": "Declaration Create", "description": "Created declaration CD-UCCCDEP1.", "entity_type": "shipment", "entity_id": 1, "reference_code": "CD-UCCCDEP1", "event_data": json.dumps({"aju_number": "AJU-2025-1201", "confidence": 92, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(minutes=10)},
+            {"action": "Declaration Create", "description": "Created declaration CD-GT8GJ4H1.", "entity_type": "shipment", "entity_id": 2, "reference_code": "CD-GT8GJ4H1", "event_data": json.dumps({"aju_number": "AJU-2025-1002", "confidence": 88, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(minutes=15)},
+            {"action": "Declaration Create", "description": "Created declaration CD-TBNZQK7Y.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(minutes=25)},
+            {"action": "Declaration Send", "description": "Submitted declaration CD-TBNZQK7Y to CEISA simulation.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98}), "status": "sent", "created_at": now - timedelta(minutes=30)},
+            {"action": "Declaration Approve", "description": "Declaration CD-TBNZQK7Y approved by CEISA.", "entity_type": "shipment", "entity_id": 3, "reference_code": "CD-TBNZQK7Y", "event_data": json.dumps({"aju_number": "AJU-2026-0901", "confidence": 98, "cesa_ref": "CESA-CCEPI"}), "status": "approved", "created_at": now - timedelta(minutes=31)},
+            {"action": "Declaration Create", "description": "Created declaration CD-QAWBPENN.", "entity_type": "shipment", "entity_id": 4, "reference_code": "CD-QAWBPENN", "event_data": json.dumps({"aju_number": "AJU-2026-0315", "confidence": 85, "quality_score": "medium", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(hours=1)},
+            {"action": "Declaration Create", "description": "Created declaration CD-PRTVWXYZ.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=1, minutes=10)},
+            {"action": "Declaration Send", "description": "Submitted declaration CD-PRTVWXYZ to CEISA simulation.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95}), "status": "sent", "created_at": now - timedelta(hours=1, minutes=15)},
+            {"action": "Declaration Approve", "description": "Declaration CD-PRTVWXYZ approved by CEISA.", "entity_type": "shipment", "entity_id": 5, "reference_code": "CD-PRTVWXYZ", "event_data": json.dumps({"aju_number": "AJU-2026-0425", "confidence": 95}), "status": "approved", "created_at": now - timedelta(hours=1, minutes=16)},
+            {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI", "PL", "BL"], "confidence": 45, "items_extracted": 5, "processing_time_seconds": 4.1, "quality_score": "low"}), "status": "failed", "created_at": now - timedelta(hours=2)},
+            {"action": "Declaration Create", "description": "Created declaration CD-JQVSDCE.", "entity_type": "shipment", "entity_id": 7, "reference_code": "CD-JQVSDCE", "event_data": json.dumps({"aju_number": "AJU-2026-0018", "confidence": 45, "quality_score": "low", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=2, minutes=5)},
+            {"action": "Declaration Create", "description": "Created declaration CD-SENT001.", "entity_type": "shipment", "entity_id": 6, "reference_code": "CD-SENT001", "event_data": json.dumps({"aju_number": "AJU-2026-0618", "confidence": 99, "quality_score": "high", "documents": ["CI", "PL", "BL"]}), "status": "success", "created_at": now - timedelta(hours=3)},
+            {"action": "Declaration Send", "description": "Submitted declaration CD-SENT001 to CEISA simulation.", "entity_type": "shipment", "entity_id": 6, "reference_code": "CD-SENT001", "event_data": json.dumps({"aju_number": "AJU-2026-0618", "confidence": 99}), "status": "sent", "created_at": now - timedelta(hours=3, minutes=5)},
+            {"action": "Declaration Create", "description": "Created declaration CD-DIVERSE1.", "entity_type": "shipment", "entity_id": 10, "reference_code": "CD-DIVERSE1", "event_data": json.dumps({"aju_number": "AJU-2026-0701", "confidence": 78, "quality_score": "medium", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(hours=4)},
+            {"action": "OCR Process", "description": "Processed upload(s) with OCR and intelligent extraction.", "reference_code": None, "event_data": json.dumps({"engine": "HybridExtractor", "documents": ["CI"], "confidence": 91, "items_extracted": 10, "processing_time_seconds": 2.1, "quality_score": "high"}), "status": "success", "created_at": now - timedelta(hours=5)},
+            {"action": "Declaration Create", "description": "Created declaration CD-DIVERSE2.", "entity_type": "shipment", "entity_id": 11, "reference_code": "CD-DIVERSE2", "event_data": json.dumps({"aju_number": "AJU-2026-0702", "confidence": 91, "quality_score": "high", "documents": ["CI", "PL"]}), "status": "success", "created_at": now - timedelta(hours=5, minutes=10)},
+            {"action": "Declaration Create", "description": "Created declaration CD-ABCFGH12.", "entity_type": "shipment", "entity_id": 9, "reference_code": "CD-ABCFGH12", "event_data": json.dumps({"aju_number": "AJU-2026-0510", "confidence": 0, "quality_score": "low", "documents": ["CI"]}), "status": "success", "created_at": now - timedelta(days=1)},
+            {"action": "Declaration Reject", "description": "Declaration CD-ABCFGH12 rejected by CEISA.", "entity_type": "shipment", "entity_id": 9, "reference_code": "CD-ABCFGH12", "event_data": json.dumps({"aju_number": "AJU-2026-0510", "confidence": 0, "error": "Invalid HS Code"}), "status": "failed", "created_at": now - timedelta(days=1, hours=1)},
+        ]
+
+        for data in samples:
+            db.add(Activity(**data))
+        db.commit()
+        logger.info(f"Seeded {len(samples)} activity records.")
+        return {"message": f"Seeded {len(samples)} activity records."}
     finally:
         db.close()
 
@@ -396,6 +522,18 @@ async def delete_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
     await db.execute(delete(Shipment).where(Shipment.id == shipment_id))
     await db.commit()
     logger.info(f"Deleted shipment {shipment_id}: {ref_code}")
+
+    await create_activity(
+        db=db,
+        action=ActivityAction.DECLARATION_DELETE,
+        description=f"Deleted declaration {ref_code}.",
+        entity_type="shipment",
+        entity_id=shipment_id,
+        reference_code=ref_code,
+        metadata={"shipment_id": shipment_id},
+        status="success",
+    )
+
     return {"message": f"Shipment {shipment_id} deleted", "reference_code": ref_code}
 
 
@@ -412,6 +550,21 @@ async def send_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(s)
     logger.info(f"Shipment {shipment_id} marked as SENT")
+
+    await create_activity(
+        db=db,
+        action=ActivityAction.DECLARATION_SEND,
+        description=f"Submitted declaration {s.reference_code} to CEISA simulation.",
+        entity_type="shipment",
+        entity_id=s.id,
+        reference_code=s.reference_code,
+        metadata={
+            "aju_number": s.aju_number,
+            "confidence": round(s.extraction_confidence * 100) if s.extraction_confidence else 0,
+        },
+        status="sent",
+    )
+
     return {"message": "Shipment marked as sent", "id": s.id, "status": s.status.value}
 
 
@@ -437,6 +590,31 @@ async def update_shipment_status(
     s.updated_at = get_local_time()
     await db.commit()
     await db.refresh(s)
+
+    act_action = ActivityAction.DECLARATION_UPDATE
+    act_status = "success"
+    if new_status == ShipmentStatus.APPROVED:
+        act_action = ActivityAction.DECLARATION_APPROVE
+        act_status = "approved"
+        act_desc = f"Declaration {s.reference_code} approved by CEISA."
+    elif new_status == ShipmentStatus.FAILED:
+        act_action = ActivityAction.DECLARATION_REJECT
+        act_status = "failed"
+        act_desc = f"Declaration {s.reference_code} rejected by CEISA."
+    else:
+        act_desc = f"Updated declaration {s.reference_code} status to {new_status.value}."
+
+    await create_activity(
+        db=db,
+        action=act_action,
+        description=act_desc,
+        entity_type="shipment",
+        entity_id=s.id,
+        reference_code=s.reference_code,
+        metadata={"old_status": None, "new_status": new_status.value},
+        status=act_status,
+    )
+
     return {"message": "Status updated", "id": s.id, "status": s.status.value}
 
 
@@ -499,6 +677,22 @@ async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
         logger.info(
             f"Shipment saved: id={shipment.id}, ref={shipment.reference_code}, "
             f"status={shipment.status.value}"
+        )
+
+        await create_activity(
+            db=db,
+            action=ActivityAction.DECLARATION_CREATE,
+            description=f"Created declaration {shipment.reference_code}.",
+            entity_type="shipment",
+            entity_id=shipment.id,
+            reference_code=shipment.reference_code,
+            metadata={
+                "aju_number": body.get("aju_number"),
+                "confidence": body.get("extraction_confidence"),
+                "quality_score": body.get("quality_score"),
+                "documents": body.get("documents_processed", []),
+            },
+            status="success",
         )
 
         return JSONResponse(content={
@@ -702,6 +896,34 @@ async def extract_documents(request: Request):
         # Return extraction results without saving to database
         # User must click "Save to Declarations" to persist
 
+        _status = "success" if conf >= 0.50 else "failed"
+        _log_meta = {
+            "engine": "HybridExtractor",
+            "documents": list(file_paths.keys()),
+            "confidence": round(conf * 100),
+            "items_extracted": len(result.entities.items),
+            "processing_time_seconds": round(elapsed, 1),
+            "quality_score": quality_score,
+            "aju_number": shipment_id,
+        }
+
+        # Log activity asynchronously (fire-and-forget via background task)
+        try:
+            bg_db = AsyncSessionLocal()
+            await create_activity(
+                db=bg_db,
+                action=ActivityAction.OCR_PROCESS,
+                description=f"Processed upload(s) with OCR and intelligent extraction.",
+                entity_type="shipment",
+                entity_id=None,
+                reference_code=None,
+                metadata=_log_meta,
+                status=_status,
+            )
+            await bg_db.close()
+        except Exception as act_err:
+            logger.warning(f"Failed to log activity: {act_err}")
+
         return JSONResponse(content={
             "success": True,
             "filename": excel_filename,
@@ -723,9 +945,140 @@ async def extract_documents(request: Request):
     except HTTPException:
         _cleanup()
         raise
-    except Exception:
+    except Exception as exc:
         _cleanup()
+        try:
+            bg_db = AsyncSessionLocal()
+            await create_activity(
+                db=bg_db,
+                action=ActivityAction.OCR_PROCESS,
+                description="OCR processing failed.",
+                entity_type="shipment",
+                metadata={"error": str(exc)},
+                status="failed",
+            )
+            await bg_db.close()
+        except Exception:
+            pass
         raise
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# API: Activities / Audit Log
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/activities", tags=["activities"])
+async def list_activities(
+    action: Optional[str] = Query(None, description="Filter by action type"),
+    search: Optional[str] = Query(None, description="Search in description or reference_code"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """List activities with pagination, filtering, and search."""
+    query = select(Activity).order_by(Activity.created_at.desc())
+
+    if action:
+        query = query.where(Activity.action == action)
+    if status:
+        query = query.where(Activity.status == status)
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Activity.description.ilike(search_term),
+                Activity.reference_code.ilike(search_term),
+            )
+        )
+
+    # Total count
+    count_query = select(func.count(Activity.id))
+    if action:
+        count_query = count_query.where(Activity.action == action)
+    if status:
+        count_query = count_query.where(Activity.status == status)
+    if search:
+        search_term = f"%{search}%"
+        count_query = count_query.where(
+            or_(
+                Activity.description.ilike(search_term),
+                Activity.reference_code.ilike(search_term),
+            )
+        )
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+
+    # Paginated results
+    offset = (page - 1) * per_page
+    query = query.offset(offset).limit(per_page)
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    def parse_meta(act: Activity):
+        if act.event_data:
+            try:
+                return json.loads(act.event_data)
+            except Exception:
+                return {}
+        return {}
+
+    activities = [
+        {
+            "id": act.id,
+            "action": act.action,
+            "description": act.description,
+            "entity_type": act.entity_type,
+            "entity_id": act.entity_id,
+            "reference_code": act.reference_code,
+            "metadata": parse_meta(act),
+            "status": act.status,
+            "created_at": act.created_at.isoformat() if act.created_at else None,
+        }
+        for act in items
+    ]
+
+    return {
+        "items": activities,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": (total + per_page - 1) // per_page,
+    }
+
+
+@app.get("/api/activities/stats", tags=["activities"])
+async def get_activity_stats(db: AsyncSession = Depends(get_db)):
+    """Get summary statistics for the activity log."""
+    total_result = await db.execute(select(func.count(Activity.id)))
+    total_events = total_result.scalar() or 0
+
+    ocr_result = await db.execute(
+        select(func.count(Activity.id)).where(Activity.action == ActivityAction.OCR_PROCESS.value)
+    )
+    ocr_runs = ocr_result.scalar() or 0
+
+    submission_actions = [
+        ActivityAction.DECLARATION_SEND.value,
+        ActivityAction.DECLARATION_APPROVE.value,
+    ]
+    submission_result = await db.execute(
+        select(func.count(Activity.id)).where(Activity.action.in_(submission_actions))
+    )
+    ceisa_submissions = submission_result.scalar() or 0
+
+    last_result = await db.execute(
+        select(Activity.created_at).order_by(Activity.created_at.desc()).limit(1)
+    )
+    last_activity_row = last_result.scalar_one_or_none()
+    last_activity = last_activity_row.isoformat() if last_activity_row else None
+
+    return {
+        "total_events": total_events,
+        "ocr_runs": ocr_runs,
+        "ceisa_submissions": ceisa_submissions,
+        "last_activity": last_activity,
+    }
 
 
 @app.get("/api/dashboard", tags=["dashboard"])
@@ -877,6 +1230,15 @@ async def serve_declarations():
     if decl_path.exists():
         return FileResponse(str(decl_path), media_type="text/html")
     raise HTTPException(status_code=404, detail="declarations.html not found")
+
+
+@app.get("/activity")
+async def serve_activity():
+    """Serve the activity / audit log page."""
+    activity_path = Path(__file__).parent / "activity.html"
+    if activity_path.exists():
+        return FileResponse(str(activity_path), media_type="text/html")
+    raise HTTPException(status_code=404, detail="activity.html not found")
 
 
 @app.get("/health")
