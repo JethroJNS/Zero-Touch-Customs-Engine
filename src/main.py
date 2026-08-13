@@ -55,13 +55,18 @@ Base = declarative_base()
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
+# Status System:
+# - Draft Valid: OCR result with confidence > 50%
+# - Draft Invalid: OCR result with confidence < 50% (cannot be sent)
+# - Sent: Shipment sent to CEISA system
+# - Failed: Shipment rejected by CEISA system
+# - Approved: Draft Valid that was accepted by CEISA system
 class ShipmentStatus(str, enum.Enum):
     DRAFT_VALID = "Draft Valid"
     DRAFT_INVALID = "Draft Invalid"
-    APPROVED_VALID = "Approved Valid"
-    APPROVED_INVALID = "Approved Invalid"
     SENT = "Sent"
     FAILED = "Failed"
+    APPROVED = "Approved"
 
 
 def get_local_time():
@@ -177,15 +182,31 @@ def _seed_data():
                 return
 
             now = get_local_time()
+
+            # Create a mix of shipments with different statuses for dashboard testing
             samples = [
-                {"aju_number": "AJU-2025-1201", "reference_code": "CD-UCCCDEP1", "filename": "INV-2025-1201.pdf", "excel_filename": "AJU-2025-1201_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 175,000,000.00", "extraction_confidence": 1.0, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 256, "created_at": now, "updated_at": now},
-                {"aju_number": "AJU-2025-1002", "reference_code": "CD-GT8GJ4H1", "filename": "INV-2025-1002.pdf", "excel_filename": "AJU-2025-1002_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 154,250,000.00", "extraction_confidence": 0.95, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 198, "created_at": now, "updated_at": now},
-                {"aju_number": "AJU-2026-0901", "reference_code": "CD-TBNZQK7Y", "filename": "INV-2026-0901.pdf", "excel_filename": "AJU-2026-0901_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 190,500,000.00", "extraction_confidence": 0.98, "quality_score": "high", "status": ShipmentStatus.APPROVED_VALID, "file_size_kb": 312, "created_at": now, "updated_at": now},
-                {"aju_number": "AJU-2026-0315", "reference_code": "CD-QAWBPENN", "filename": "INV-2026-0315.pdf", "excel_filename": "AJU-2026-0315_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 59,680.00", "extraction_confidence": 0.85, "quality_score": "medium", "status": ShipmentStatus.APPROVED_VALID, "file_size_kb": 89, "created_at": now, "updated_at": now},
+                # Draft Valid (high confidence - needs review before submission)
+                {"aju_number": "AJU-2025-1201", "reference_code": "CD-UCCCDEP1", "filename": "INV-2025-1201.pdf", "excel_filename": "AJU-2025-1201_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 175,000,000.00", "extraction_confidence": 0.92, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 256, "created_at": now, "updated_at": now},
+                {"aju_number": "AJU-2025-1002", "reference_code": "CD-GT8GJ4H1", "filename": "INV-2025-1002.pdf", "excel_filename": "AJU-2025-1002_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 154,250,000.00", "extraction_confidence": 0.88, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 198, "created_at": now, "updated_at": now},
+
+                # Approved (accepted by CEISA)
+                {"aju_number": "AJU-2026-0901", "reference_code": "CD-TBNZQK7Y", "filename": "INV-2026-0901.pdf", "excel_filename": "AJU-2026-0901_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 190,500,000.00", "extraction_confidence": 0.98, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 312, "created_at": now, "updated_at": now},
+                {"aju_number": "AJU-2026-0315", "reference_code": "CD-QAWBPENN", "filename": "INV-2026-0315.pdf", "excel_filename": "AJU-2026-0315_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 59,680.00", "extraction_confidence": 0.85, "quality_score": "medium", "status": ShipmentStatus.APPROVED, "file_size_kb": 89, "created_at": now, "updated_at": now},
+                {"aju_number": "AJU-2026-0425", "reference_code": "CD-PRTVWXYZ", "filename": "INV-2026-0425.pdf", "excel_filename": "AJU-2026-0425_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 234,500,000.00", "extraction_confidence": 0.95, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 178, "created_at": now, "updated_at": now},
+
+                # Sent (submitted to CEISA)
+                {"aju_number": "AJU-2026-0618", "reference_code": "CD-SENT001", "filename": "INV-2026-0618.pdf", "excel_filename": "AJU-2026-0618_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 456,000,000.00", "extraction_confidence": 0.99, "quality_score": "high", "status": ShipmentStatus.SENT, "file_size_kb": 245, "created_at": now, "updated_at": now},
+
+                # Draft Invalid (Needs Review)
                 {"aju_number": "AJU-2026-0018", "reference_code": "CD-JQVSDCE", "filename": "INV-2026-0018.pdf", "excel_filename": "AJU-2026-0018_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 518,500.00", "extraction_confidence": 0.45, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 156, "created_at": now, "updated_at": now},
                 {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.55, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201, "created_at": now, "updated_at": now},
-                {"aju_number": "AJU-2026-0425", "reference_code": "CD-PRTVWXYZ", "filename": "INV-2026-0425.pdf", "excel_filename": "AJU-2026-0425_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 234,500,000.00", "extraction_confidence": 0.92, "quality_score": "high", "status": ShipmentStatus.APPROVED_VALID, "file_size_kb": 178, "created_at": now, "updated_at": now},
+
+                # Failed
                 {"aju_number": "AJU-2026-0510", "reference_code": "CD-ABCFGH12", "filename": "INV-2026-0510.pdf", "excel_filename": "AJU-2026-0510_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 12,340,000.00", "extraction_confidence": 0.0, "quality_score": "low", "status": ShipmentStatus.FAILED, "file_size_kb": 45, "created_at": now, "updated_at": now},
+
+                # More diverse entries
+                {"aju_number": "AJU-2026-0701", "reference_code": "CD-DIVERSE1", "filename": "INV-2026-0701.pdf", "excel_filename": "AJU-2026-0701_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 78,500,000.00", "extraction_confidence": 0.78, "quality_score": "medium", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 112, "created_at": now, "updated_at": now},
+                {"aju_number": "AJU-2026-0702", "reference_code": "CD-DIVERSE2", "filename": "INV-2026-0702.pdf", "excel_filename": "AJU-2026-0702_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 320,000,000.00", "extraction_confidence": 0.91, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 189, "created_at": now, "updated_at": now},
             ]
 
             for data in samples:
@@ -216,11 +237,23 @@ async def seed_database():
             return {"message": "Database already has records, skipping seed."}
 
         samples = [
-            {"aju_number": "AJU-2025-1201", "reference_code": "CD-UCCCDEP1", "filename": "INV-2025-1201.pdf", "excel_filename": "AJU-2025-1201_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 175,000,000.00", "extraction_confidence": 1.0, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 256},
-            {"aju_number": "AJU-2025-1002", "reference_code": "CD-GT8GJ4H1", "filename": "INV-2025-1002.pdf", "excel_filename": "AJU-2025-1002_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 154,250,000.00", "extraction_confidence": 1.0, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 198},
-            {"aju_number": "AJU-2026-0901", "reference_code": "CD-TBNZQK7Y", "filename": "INV-2026-0901.pdf", "excel_filename": "AJU-2026-0901_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 190,500,000.00", "extraction_confidence": 0.98, "quality_score": "high", "status": ShipmentStatus.APPROVED_VALID, "file_size_kb": 312},
-            {"aju_number": "AJU-2026-0315", "reference_code": "CD-QAWBPENN", "filename": "INV-2026-0315.pdf", "excel_filename": "AJU-2026-0315_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 59,680.00", "extraction_confidence": 0.85, "quality_score": "medium", "status": ShipmentStatus.APPROVED_VALID, "file_size_kb": 89},
+            # Draft Valid (high confidence)
+            {"aju_number": "AJU-2025-1201", "reference_code": "CD-UCCCDEP1", "filename": "INV-2025-1201.pdf", "excel_filename": "AJU-2025-1201_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 175,000,000.00", "extraction_confidence": 0.92, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 256},
+            {"aju_number": "AJU-2025-1002", "reference_code": "CD-GT8GJ4H1", "filename": "INV-2025-1002.pdf", "excel_filename": "AJU-2025-1002_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 154,250,000.00", "extraction_confidence": 0.88, "quality_score": "high", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 198},
+            # Approved (accepted by CEISA)
+            {"aju_number": "AJU-2026-0901", "reference_code": "CD-TBNZQK7Y", "filename": "INV-2026-0901.pdf", "excel_filename": "AJU-2026-0901_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 190,500,000.00", "extraction_confidence": 0.98, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 312},
+            {"aju_number": "AJU-2026-0315", "reference_code": "CD-QAWBPENN", "filename": "INV-2026-0315.pdf", "excel_filename": "AJU-2026-0315_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 59,680.00", "extraction_confidence": 0.85, "quality_score": "medium", "status": ShipmentStatus.APPROVED, "file_size_kb": 89},
+            {"aju_number": "AJU-2026-0425", "reference_code": "CD-PRTVWXYZ", "filename": "INV-2026-0425.pdf", "excel_filename": "AJU-2026-0425_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 234,500,000.00", "extraction_confidence": 0.95, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 178},
+            # Sent (submitted to CEISA)
+            {"aju_number": "AJU-2026-0618", "reference_code": "CD-SENT001", "filename": "INV-2026-0618.pdf", "excel_filename": "AJU-2026-0618_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 456,000,000.00", "extraction_confidence": 0.99, "quality_score": "high", "status": ShipmentStatus.SENT, "file_size_kb": 245},
+            # Draft Invalid (Needs Review)
             {"aju_number": "AJU-2026-0018", "reference_code": "CD-JQVSDCE", "filename": "INV-2026-0018.pdf", "excel_filename": "AJU-2026-0018_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 518,500.00", "extraction_confidence": 0.45, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 156},
+            {"aju_number": "AJU-2026-0319", "reference_code": "CD-KLSMNRTO", "filename": "INV-2026-0319.pdf", "excel_filename": "AJU-2026-0319_ceisa.xlsx", "documents_processed": '["CI", "PL", "BL"]', "total_amount": "INR 89,200,000.00", "extraction_confidence": 0.55, "quality_score": "low", "status": ShipmentStatus.DRAFT_INVALID, "file_size_kb": 201},
+            # Failed
+            {"aju_number": "AJU-2026-0510", "reference_code": "CD-ABCFGH12", "filename": "INV-2026-0510.pdf", "excel_filename": "AJU-2026-0510_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 12,340,000.00", "extraction_confidence": 0.0, "quality_score": "low", "status": ShipmentStatus.FAILED, "file_size_kb": 45},
+            # More diverse
+            {"aju_number": "AJU-2026-0701", "reference_code": "CD-DIVERSE1", "filename": "INV-2026-0701.pdf", "excel_filename": "AJU-2026-0701_ceisa.xlsx", "documents_processed": '["CI"]', "total_amount": "INR 78,500,000.00", "extraction_confidence": 0.78, "quality_score": "medium", "status": ShipmentStatus.DRAFT_VALID, "file_size_kb": 112},
+            {"aju_number": "AJU-2026-0702", "reference_code": "CD-DIVERSE2", "filename": "INV-2026-0702.pdf", "excel_filename": "AJU-2026-0702_ceisa.xlsx", "documents_processed": '["CI", "PL"]', "total_amount": "INR 320,000,000.00", "extraction_confidence": 0.91, "quality_score": "high", "status": ShipmentStatus.APPROVED, "file_size_kb": 189},
         ]
 
         for data in samples:
@@ -432,6 +465,14 @@ async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
             reference_code = generate_reference_code()
             attempts += 1
 
+        # Calculate status based on confidence (server-side validation)
+        # Draft Valid: confidence > 50%, Draft Invalid: confidence <= 50%
+        extraction_confidence = body.get("extraction_confidence", 0) / 100
+        if extraction_confidence > 0.50:
+            status = ShipmentStatus.DRAFT_VALID
+        else:
+            status = ShipmentStatus.DRAFT_INVALID
+
         shipment = Shipment(
             aju_number=body.get("aju_number"),
             reference_code=reference_code,
@@ -439,9 +480,9 @@ async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
             excel_filename=body.get("excel_filename"),
             documents_processed=json.dumps(body.get("documents_processed", [])),
             total_amount=body.get("total_amount"),
-            extraction_confidence=body.get("extraction_confidence", 0) / 100,
+            extraction_confidence=extraction_confidence,
             quality_score=body.get("quality_score", "medium"),
-            status=ShipmentStatus(body.get("status", "Draft Valid")),
+            status=status,
             header_fields=json.dumps(body.get("header_fields", {})),
             line_items=json.dumps(body.get("line_items", [])),
             quality_report=json.dumps(body.get("quality_report", {})),
@@ -605,10 +646,11 @@ async def extract_documents(request: Request):
         else:
             quality_score = "low"
 
-        invoice_number = getattr(result.entities, 'invoice_number', None)
-        if conf >= 0.80 and invoice_number:
-            status = ShipmentStatus.APPROVED_VALID
-        elif conf >= 0.50:
+        # Status based on confidence:
+        # - Draft Valid: OCR confidence > 50%
+        # - Draft Invalid: OCR confidence < 50%
+        # (Sent, Failed, Approved are set manually after CEISA interaction)
+        if conf >= 0.50:
             status = ShipmentStatus.DRAFT_VALID
         else:
             status = ShipmentStatus.DRAFT_INVALID
@@ -686,16 +728,145 @@ async def extract_documents(request: Request):
         raise
 
 
+@app.get("/api/dashboard", tags=["dashboard"])
+async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
+    """
+    Get dashboard statistics from database.
+
+    Status System:
+    - Draft Valid: OCR result with confidence > 50%
+    - Draft Invalid: OCR result with confidence < 50% (cannot be sent)
+    - Sent: Shipment sent to CEISA system
+    - Failed: Shipment rejected by CEISA system
+    - Approved: Draft Valid that was accepted by CEISA system
+
+    Dashboard Metrics:
+    - CEISA Ready: Draft Valid + Sent count (ready for CEISA)
+    - Needs Review: Draft Invalid count (cannot be sent)
+    - CEISA Approved: Approved count (accepted by CEISA)
+    """
+    try:
+        # Count total shipments
+        total_result = await db.execute(select(func.count(Shipment.id)))
+        total_shipments = total_result.scalar() or 0
+
+        # Count by status
+        draft_valid_result = await db.execute(
+            select(func.count(Shipment.id)).where(Shipment.status == ShipmentStatus.DRAFT_VALID)
+        )
+        draft_valid = draft_valid_result.scalar() or 0
+
+        draft_invalid_result = await db.execute(
+            select(func.count(Shipment.id)).where(Shipment.status == ShipmentStatus.DRAFT_INVALID)
+        )
+        draft_invalid = draft_invalid_result.scalar() or 0
+
+        sent_result = await db.execute(
+            select(func.count(Shipment.id)).where(Shipment.status == ShipmentStatus.SENT)
+        )
+        sent = sent_result.scalar() or 0
+
+        failed_result = await db.execute(
+            select(func.count(Shipment.id)).where(Shipment.status == ShipmentStatus.FAILED)
+        )
+        failed = failed_result.scalar() or 0
+
+        approved_result = await db.execute(
+            select(func.count(Shipment.id)).where(Shipment.status == ShipmentStatus.APPROVED)
+        )
+        approved = approved_result.scalar() or 0
+
+        # Calculate summary stats based on new status system
+        saved_records = total_shipments
+        ceisa_ready = draft_valid + sent  # Draft Valid + Sent = ready for CEISA
+        needs_review = draft_invalid  # Draft Invalid = needs review (cannot be sent)
+        ceisa_approved = approved  # Approved = accepted by CEISA
+
+        # Get all shipments for document type analysis and confidence calculation
+        all_shipments_result = await db.execute(select(Shipment))
+        all_shipments = all_shipments_result.scalars().all()
+
+        # Count document types
+        ci_count = 0
+        pl_count = 0
+        bl_count = 0
+        total_confidence = 0.0
+        confidence_count = 0
+
+        for s in all_shipments:
+            docs = json.loads(s.documents_processed) if s.documents_processed else []
+            if "CI" in docs:
+                ci_count += 1
+            if "PL" in docs:
+                pl_count += 1
+            if "BL" in docs:
+                bl_count += 1
+            if s.extraction_confidence is not None and s.extraction_confidence > 0:
+                total_confidence += s.extraction_confidence
+                confidence_count += 1
+
+        avg_confidence = round((total_confidence / confidence_count * 100), 1) if confidence_count > 0 else 0
+
+        # Activity volume = total shipments created
+        activity_volume = total_shipments
+
+        return {
+            "success": True,
+            "summary": {
+                "saved_records": saved_records,
+                "ceisa_ready": ceisa_ready,
+                "needs_review": needs_review,
+                "ceisa_approved": ceisa_approved,
+            },
+            "operational": {
+                "ci_count": ci_count,
+                "pl_count": pl_count,
+                "bl_count": bl_count,
+                "ceisa_ready_count": ceisa_ready,
+                "avg_confidence": avg_confidence,
+                "activity_volume": activity_volume,
+            },
+            "status_breakdown": {
+                "draft_valid": draft_valid,
+                "draft_invalid": draft_invalid,
+                "sent": sent,
+                "failed": failed,
+                "approved": approved,
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to get dashboard stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Pages
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/")
 async def serve_index():
-    """Serve the main page."""
-    index_path = Path(__file__).parent / "smart_upload.html"
+    """Serve the main page (Dashboard)."""
+    index_path = Path(__file__).parent / "dashboard.html"
     if index_path.exists():
         return FileResponse(str(index_path), media_type="text/html")
+    raise HTTPException(status_code=404, detail="dashboard.html not found")
+
+
+@app.get("/dashboard")
+async def serve_dashboard():
+    """Serve the dashboard page."""
+    dash_path = Path(__file__).parent / "dashboard.html"
+    if dash_path.exists():
+        return FileResponse(str(dash_path), media_type="text/html")
+    raise HTTPException(status_code=404, detail="dashboard.html not found")
+
+
+@app.get("/smart-upload")
+async def serve_smart_upload():
+    """Serve the Smart Upload page."""
+    upload_path = Path(__file__).parent / "smart_upload.html"
+    if upload_path.exists():
+        return FileResponse(str(upload_path), media_type="text/html")
     raise HTTPException(status_code=404, detail="smart_upload.html not found")
 
 

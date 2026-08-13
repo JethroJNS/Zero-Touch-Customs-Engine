@@ -19,7 +19,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <a href="#" class="nav-item">
+        <a href="/" class="nav-item">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
             <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
@@ -28,7 +28,7 @@
           </svg>
           <span>Dashboard</span>
         </a>
-        <a href="#" class="nav-item active">
+        <a href="/smart-upload" class="nav-item active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -483,35 +483,64 @@
     }
 
     // ── Progress Bar ─────────────────────────────────────────────────────────
+    let currentProgress = 0;
+    let progressAnimation = null;
+
+    function animateProgress(targetPercent, duration = 300) {
+      const startPercent = currentProgress;
+      const startTime = performance.now();
+
+      if (progressAnimation) cancelAnimationFrame(progressAnimation);
+
+      function animate(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        currentProgress = startPercent + (targetPercent - startPercent) * easeOut;
+
+        const fill = document.getElementById('progress-fill');
+        const percentEl = document.getElementById('progress-percent');
+        if (fill) fill.style.width = `${currentProgress}%`;
+        if (percentEl) percentEl.textContent = `${Math.round(currentProgress)}%`;
+
+        if (progress < 1) {
+          progressAnimation = requestAnimationFrame(animate);
+        }
+      }
+
+      progressAnimation = requestAnimationFrame(animate);
+    }
+
     function setProgress(percent, step) {
       const fill = document.getElementById('progress-fill');
       const percentEl = document.getElementById('progress-percent');
       const labelEl = document.getElementById('progress-label');
 
-      fill.style.width = `${percent}%`;
-      percentEl.textContent = `${Math.round(percent)}%`;
+      // Animate to the target percentage
+      animateProgress(percent, 400);
 
       const stepLabels = {
         0: 'Uploading documents...',
-        20: 'Running OCR engine...',
-        40: 'Extracting entities...',
-        60: 'Validating data...',
-        80: 'Generating CEISA 4.0...',
-        100: 'Finalizing...',
+        15: 'Running OCR engine...',
+        35: 'Extracting entities...',
+        55: 'Validating data...',
+        75: 'Generating CEISA 4.0...',
+        95: 'Finalizing...',
+        100: 'Complete!',
       };
 
-      if (step !== undefined) {
+      if (step !== undefined && labelEl) {
         labelEl.textContent = stepLabels[step] || 'Processing...';
 
         // Update step indicators
         document.querySelectorAll('.progress-step').forEach(el => {
           const elStep = parseInt(el.dataset.step === 'upload' ? 0 :
-                                  el.dataset.step === 'ocr' ? 20 :
-                                  el.dataset.step === 'extract' ? 40 :
-                                  el.dataset.step === 'validate' ? 60 : 80);
-          if (step >= elStep) {
+                                  el.dataset.step === 'ocr' ? 15 :
+                                  el.dataset.step === 'extract' ? 35 :
+                                  el.dataset.step === 'validate' ? 55 : 75);
+          if (step >= elStep + 20) {
             el.classList.add('completed');
-          } else if (step === elStep - 20) {
+          } else if (Math.abs(step - elStep) <= 20) {
             el.classList.add('active');
           } else {
             el.classList.remove('completed', 'active');
@@ -523,12 +552,15 @@
     function showProgress() {
       document.getElementById('progress-section').style.display = 'block';
       document.getElementById('results-section').style.display = 'none';
-      setProgress(0);
+      currentProgress = 0;
 
       // Reset step indicators
       document.querySelectorAll('.progress-step').forEach(el => {
         el.classList.remove('completed', 'active');
       });
+
+      // Animate initial progress
+      animateProgress(5, 500);
     }
 
     function hideProgress() {
@@ -687,16 +719,16 @@
       }
 
       try {
-        // Progress: Uploading
-        setProgress(5, 0);
+        // Progress: Uploading (simulated animation while waiting)
+        setProgress(10, 0);
 
         const response = await fetch('/api/extract', {
           method: 'POST',
           body: formData,
         });
 
-        // Progress: OCR running
-        setProgress(20, 20);
+        // Progress: OCR running (animate to intermediate point)
+        setProgress(25, 15);
 
         if (!response.ok) {
           let errorMsg = `Server error: ${response.status} ${response.statusText}`;
@@ -707,15 +739,15 @@
           throw new Error(errorMsg);
         }
 
-        // Progress: Extracting entities
-        setProgress(40, 40);
+        // Progress: Extracting entities (animate to intermediate point)
+        setProgress(45, 35);
 
         // Parse JSON response (new format without result wrapper)
         const jsonData = await response.json();
         state.lastExtractionResult = jsonData;  // Store for later saving
 
         // Progress: Validating data
-        setProgress(60, 60);
+        setProgress(65, 55);
 
         // Decode base64 and trigger download
         const byteCharacters = atob(jsonData.excel_base64);
@@ -729,7 +761,7 @@
         });
 
         // Progress: Generating Excel
-        setProgress(80, 80);
+        setProgress(85, 75);
 
         // Trigger download
         const url = URL.createObjectURL(blob);
