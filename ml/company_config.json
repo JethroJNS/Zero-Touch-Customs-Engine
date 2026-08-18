@@ -1,0 +1,125 @@
+{
+  "_comment": "Zero-Touch Customs Engine — Company Configuration for CEISA 4.0",
+  "_fill_instruction": "Replace placeholder values marked with *** with your actual company registration data.",
+
+  "company": {
+    "name": "*** NAMA PERUSAHAAN (PT/CV) - ISI NAMA LENGKAP ***",
+    "npwp": "*** NPWP 15 DIGIT (format: 01.234.567.8-901.000) ***",
+    "nib": "*** NIB 16-18 DIGIT (National Identification Number) ***",
+    "api_type": "02",
+    "api_number": "*** NOMOR API (Angka Pengenal Importir) ***",
+    "address": "*** ALAMAT LENGKAP (Jalan, Kota, Provinsi) ***",
+    "phone": "*** NOMOR TELEPON ***",
+    "email": "*** EMAIL PERUSAHAAN ***"
+  },
+
+  "ceisa": {
+    "niper": "*** NIPER 6 DIGIT (Nomor Induk Pengusaha Importir) ***",
+    "kode_kantor": "*** KODE KANTOR BC 4 DIGIT (Bea Cukai Registered Office) ***",
+    "kode_dokumen": {
+      "pib": "01",
+      "peb": "23",
+      "bc11": "11",
+      "bc12": "12",
+      "bc15": "15",
+      "bc23": "23",
+      "bc25": "25",
+      "bc27": "27"
+    },
+    "kode_cara_bayar": "1",
+    "kode_type_transaksi": "1",
+    "kode_kantor_bongkar": "*** KODE KANTOR BC BONGKAR 4 DIGIT (Port of Entry) ***",
+    "kode_kantor_pabean": "*** KODE KANTOR BC PABEAN 4 DIGIT (Customs Office) ***"
+  },
+
+  "host_to_host": {
+    "_comment": "H2H CEISA credentials from DJBC (Direktorat Jenderal Bea dan Cukai)",
+    "api_base_url": "https://api-ceisa4w06.beacukai.go.id",
+    "endpoints": {
+      "auth": "/authentications",
+      "aju_validate": "/validates",
+      "aju_submit": "/submit",
+      "aju_status": "/status",
+      "billing_check": "/billing",
+      "sppb_check": "/sppb"
+    },
+    "client_id": "*** CLIENT ID DARI DJBC H2H REGISTRATION ***",
+    "client_secret": "*** CLIENT SECRET DARI DJBC H2H REGISTRATION ***",
+    "api_key": "*** API KEY JIKA DIPERLUKAN ***",
+    "sandbox_mode": true,
+    "timeout_seconds": 30,
+    "max_retries": 3
+  },
+
+  "production_defaults": {
+    "currency": "USD",
+    "country_of_origin": "CN",
+    "incoterm": "FOB",
+    "kode_negara_asal": "CN",
+    "kode_guna_barang": "KMD",
+    "kode_asal_barang": "1",
+    "pernyataan_lartas": "T",
+    "flag_4_tahun": "T",
+    "kode_kondisi_barang": "1",
+    "metode_penentuan_nilai": "Metode 1",
+    "statement_perbedaan_harga": "T",
+    "kode_valuta": "USD",
+    "satuan": "PCE",
+    "kode_satuan": "PC",
+    "kode_kemasan": "CT",
+    "jumlah_kemasan_satuan": "1"
+  },
+
+  "aju_generator": {
+    "_comment": "AJU Number format: 4(KodeKantor) + 2(KodeDok) + 6(NIPER) + 8(TanggalYYYYMMDD) + 6(Sequence) = 26 digits",
+    "_example": "040300012345672026083000000001",
+    "sequence_start": 1,
+    "sequence_padding": 6,
+    "date_format": "%Y%m%d",
+    "auto_increment_file": "ml/aju_sequence.txt",
+    "_required_fields_for_aju": [
+      "ceisa.niper (6 digit)",
+      "ceisa.kode_kantor (4 digit)",
+      "ceisa.kode_dokumen.pib or peb (2 digit)"
+    ]
+  },
+
+  "lookup_tables": {
+    "ndpbm_rates": {
+      "USD": 15650.00,
+      "CNY": 2150.00,
+      "EUR": 17200.00,
+      "GBP": 19800.00,
+      "JPY": 107.50,
+      "SGD": 11650.00,
+      "AUD": 10350.00,
+      "KRW": 11.50,
+      "MYR": 3520.00,
+      "THB": 445.00,
+      "HKD": 2005.00,
+      "_update_note": "Update from Bank Indonesia website: bi.go.id. Last checked: 2026-08-18."
+    },
+    "freight_rates_40ft": {
+      "CN-ID": 3500.00,
+      "SG-ID": 850.00,
+      "MY-ID": 1200.00,
+      "TH-ID": 1800.00,
+      "VN-ID": 2200.00,
+      "_note": "USD per 40ft container. Update from shipping line."
+    }
+  },
+
+  "validation_rules": {
+    "hs_code_length": 8,
+    "npwp_length": 15,
+    "nib_length": 16,
+    "nipper_length": 6,
+    "kode_kantor_length": 4,
+    "aju_length": 26,
+    "allow_test_mode": true,
+    "require_valid_hs_chapter": true
+  },
+
+  "version": "1.0.0",
+  "last_updated": "2026-08-18"
+}

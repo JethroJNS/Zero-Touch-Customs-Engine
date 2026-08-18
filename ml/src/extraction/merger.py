@@ -405,8 +405,31 @@ class Merger:
                 except ValueError:
                     pass
 
-        if total_qty > 0 and entities.total_quantity is None:
-            entities.total_quantity = str(int(total_qty))
+        if total_qty > 0:
+            ml_total_qty_str = entities.total_quantity
+            if ml_total_qty_str:
+                # ML-extracted total exists — validate vs computed sum
+                try:
+                    ml_total_qty = float(str(ml_total_qty_str).replace(",", ""))
+                    if total_qty > 0 and abs(ml_total_qty - total_qty) / total_qty > 0.25:
+                        # Significant mismatch (>25%): flag as inconsistency
+                        entities.validation_notes.append(
+                            f"[JT_CONSISTENCY] ML total={ml_total_qty:.0f} vs "
+                            f"item sum={total_qty:.0f} (diff={abs(ml_total_qty - total_qty):.0f}). "
+                            f"Using item sum. Items may need review."
+                        )
+                        logger.warning(
+                            f"[JT] Inconsistency: ML={ml_total_qty:.0f}, "
+                            f"items sum={total_qty:.0f}, items={len(entities.items)}"
+                        )
+                        # Prefer item-sum over ML total when they disagree significantly
+                        entities.total_quantity = str(int(total_qty))
+                except ValueError:
+                    entities.total_quantity = str(int(total_qty))
+            else:
+                # No ML total — use computed sum
+                entities.total_quantity = str(int(total_qty))
+
         if total_amount > 0 and entities.total_amount is None:
             entities.total_amount = f"{total_amount:.2f}"
         if total_net > 0 and entities.total_net_weight is None:
