@@ -265,6 +265,10 @@ def _is_real_item_code(code: str) -> bool:
     """Check if a string looks like a real product item code."""
     if not code or len(code) < 4:
         return False
+    # Reject pure dimension strings (e.g., "1200X450X400", "1000*500*300").
+    # Dimension pattern: digit(s) followed by X/* followed by digit(s), repeated.
+    if re.match(r"^\d+[Xx*]\d+([Xx*]\d+)+$", code, re.IGNORECASE):
+        return False
     # Must contain at least one digit and one letter (real product codes)
     if not any(c.isdigit() for c in code):
         return False
@@ -377,8 +381,10 @@ class LineItemExtractor:
         items = self._extract_by_item_code(text)
 
         # Strategy 2: Amount-based fallback for textile/rubber/machinery CIs
-        # where product names serve as items and there are no traditional item codes
-        if len(items) < 2:
+        # where product names serve as items and there are no traditional item codes.
+        # Only use fallback if item-code extraction failed (no items with valid item_code).
+        has_valid_items = any(item.item_code is not None for item in items)
+        if not has_valid_items:
             fallback_items = self._extract_by_amount_fallback(text)
             if fallback_items:
                 logger.debug(
@@ -469,10 +475,19 @@ class LineItemExtractor:
         if items:
             all_text = "\n".join(lines)
             detected_hs = self._detect_hs_codes(all_text)
+
+            # Try to extract per-item HS codes by looking for HS near each item code
+            per_item_hs = self._extract_per_item_hs(lines, item_line_indices)
+
             if detected_hs:
+                default_hs = detected_hs[0]  # Best scoring HS from document-level detection
                 for item in items:
                     if item.hs_code is None:
-                        item.hs_code = detected_hs[0]
+                        # Prefer per-item HS if found, otherwise use document default
+                        if item.item_code and item.item_code in per_item_hs:
+                            item.hs_code = per_item_hs[item.item_code]
+                        else:
+                            item.hs_code = default_hs
                     item.hs_code = self._normalize_hs(item.hs_code)
 
         return items
@@ -916,69 +931,133 @@ class LineItemExtractor:
         for la in range(1, min(max_la, next_item_idx - item_line_idx)):
             la_idx = item_line_idx + la
             next_l = lines[la_idx].strip()
+            # Skip lines that start with another item code — those belong to the next item.
+            if any(cp.match(next_l) for cp in self._compiled_patterns["item_code"]):
+                continue
             if DEBUG:
                 print(f"  [DEBUG LA] {norm_code}: used_sa={used_sa}, adding={la_idx}")
 
             # Claim standalone qty if item needs qty
-            if not qty and (inline_amount or unit_price):
+            if not qty:
                 qm = re.match(r"^(\d{1,5})\s*$", next_l)
                 if qm:
                     qty = qm.group(1)
 
-            # Claim standalone price
+            # Claim standalone price — but NOT if qty_price will fire (qty_price extracts both).
+            # qty_price is more precise for "qty price" pairs.
             if not unit_price:
-                pm = self._compiled_patterns["price"].search(next_l)
-                if pm:
-                    unit_price = pm.group(1)
+                qty_price_m = self._compiled_patterns["qty_price"].search(next_l)
+                if qty_price_m and qty_price_m.start() < (len(next_l) - 1):
+                    # Guard: char 2 before qty must not be digit+letter (e.g., 'D500')
+                    if not (qty_price_m.start() >= 2 and next_l[qty_price_m.start()-1].isdigit() and next_l[qty_price_m.start()-2].isalpha()):
+                        if not (qty_price_m.start() > 0 and next_l[qty_price_m.start()-1].isalpha()):
+                            # Guard: comma not in qty position
+                            qty_part = qty_price_m.group(1)
+                            if "," not in qty_part.split(".")[0]:
+                                qty = qty_price_m.group(1)
+                                unit_price = qty_price_m.group(2)
+                else:
+                    # Fallback: standalone price (no qty extraction needed here)
+                    pm = self._compiled_patterns["price"].search(next_l)
+                    if pm:
+                        unit_price = pm.group(1)
 
-            # Claim embedded amount from look-ahead, AND extract qty from same line.
-            # Always track _la_line_idx (for standalone resolution fallback).
-            # Only claim look-ahead amounts from lines that START WITH this item's code
-            # (prevents cross-item contamination, e.g., B-WHITE claiming C-WHITE's amount).
+            # Always track _la_line_idx when an embedded amount is found in range.
+            # This enables standalone resolution fallback even when the amount line
+            # doesn't start with the item code (e.g., HD-SLD combined code+desc lines).
             em_la = self._compiled_patterns["embedded_amount"].search(next_l)
-            if em_la and next_l.strip().startswith(norm_code):
-                _la_line_idx = la_idx  # Track for fallback even if we don't claim
+            if em_la:
                 if DEBUG:
-                    print(f"  [DEBUG LA] {norm_code}: found embedded_amount={em_la.group(1)!r} on line {la_idx}: {next_l!r}")
+                    print(f"  [DEBUG LA] {norm_code}: la_idx={la_idx}, embedded={em_la.group(1)!r}, line={next_l!r}")
+                # Guard: skip TOTAL-like lines — never claim amounts from TOTAL/SUBTOTAL headers
+                _TOTAL_KEYWORDS = {"TOTAL", "SUBTOTAL", "GRAND TOTAL", "AMOUNT", "JUMLAH", "NETTO", "BRUTO"}
+                first_word = re.split(r"[^A-Za-z]", next_l)[0].upper()
+                if first_word in _TOTAL_KEYWORDS:
+                    continue  # TOTAL lines should never set _la_line_idx or claim amounts
+                # ALWAYS track _la_line_idx for standalone resolution
+                if _la_line_idx is None:
+                    _la_line_idx = la_idx
                 amt_val = float(em_la.group(1).replace(",", ""))
                 if amt_val < 100000:
                     if not inline_amount:
-                        used_sa.add(la_idx)  # Only mark as used when amount is actually claimed
+                        used_sa.add(la_idx)
                         la_inline_amount = em_la.group(1)
-                    elif em_la.group(1) != inline_amount:
-                        # Look-ahead amount differs from amount-based amount.
-                        # Trust the look-ahead amount if: (a) qty × price ≈ look-ahead amount, OR
-                        # (b) look-ahead amount / unit_price is a near-integer ≥ 1.
-                        # This correctly handles D-WHITE (10 × 245.15 ≈ 2451.52) while rejecting
-                        # DTGYG-HB-1's mismatched look-ahead (200 × 87.35 ≠ 27331.23).
+                        # Also add to standalone_amounts so _resolve_standalone_amounts can use it
+                        standalone_amounts.append((la_idx, em_la.group(1)))
+                    else:
+                        # Look-ahead amount differs from inline_amount.
+                        # Validate: trust the look-ahead amount only if qty × price ≈ look-ahead amount.
+                        # This prevents cross-item contamination.
                         try:
                             qty_f = float(str(qty).replace(",", "")) if qty else 0
                             price_f = float(str(unit_price).replace(",", "")) if unit_price else 0
                             la_amt_f = float(em_la.group(1).replace(",", ""))
-                            if price_f > 0 and la_amt_f > 0:
+                            if qty_f > 0 and price_f > 0:
+                                expected = qty_f * price_f
+                                if abs(la_amt_f - expected) / expected < 0.15:
+                                    inline_amount = em_la.group(1)
+                                    la_inline_amount = em_la.group(1)
+                                    standalone_amounts.append((la_idx, em_la.group(1)))
+                            elif price_f > 0 and la_amt_f > 0:
                                 ratio = la_amt_f / price_f
                                 qty_from_la = round(ratio)
-                                if qty_f > 0:
-                                    expected = qty_f * price_f
-                                    if abs(la_amt_f - expected) / expected < 0.15:
-                                        inline_amount = em_la.group(1)
-                                elif abs(ratio - qty_from_la) < 0.02 and qty_from_la >= 1:
-                                    # Look-ahead amount / unit_price is a clean integer → trust it
+                                if abs(ratio - qty_from_la) < 0.02 and qty_from_la >= 1:
                                     inline_amount = em_la.group(1)
+                                    la_inline_amount = em_la.group(1)
+                                    standalone_amounts.append((la_idx, em_la.group(1)))
                         except (ValueError, ZeroDivisionError):
                             pass
-                    # Also extract qty from this same look-ahead line
-                    # Walk backward from amount to find the qty (integer before amount)
-                    if not qty:
-                        pos = em_la.start() - 1
-                        while pos >= 0 and next_l[pos] == ' ':
-                            pos -= 1
-                        end_idx = pos
-                        while pos >= 0 and not next_l[pos].isspace():
-                            pos -= 1
-                        between = next_l[pos + 1:end_idx + 1]
-                        if re.match(r"^\d+$", between):
-                            qty = between
+                # Extract qty from this look-ahead line (walk backward from amount to find integer).
+                # Do this REGARDLESS of whether the line starts with the item code —
+                # HD-SLD items have amount on a separate line that doesn't start with the code.
+                if not qty:
+                    pos = em_la.start() - 1
+                    while pos >= 0 and next_l[pos] == ' ':
+                        pos -= 1
+                    end_idx = pos
+                    while pos >= 0 and not next_l[pos].isspace():
+                        pos -= 1
+                    between = next_l[pos + 1:end_idx + 1]
+                    if re.match(r"^\d+$", between):
+                        qty = between
+            else:
+                # No comma-formatted embedded amount found on this look-ahead line.
+                # Try the price pattern as a fallback (plain decimal amounts like 450.00).
+                # This handles DTGYG-style items where amounts are plain decimals (no commas).
+                # ALWAYS check for TOTAL-like lines first, regardless of _la_line_idx state.
+                _TOTAL_KEYWORDS = {"TOTAL", "SUBTOTAL", "GRAND TOTAL", "AMOUNT", "JUMLAH", "NETTO", "BRUTO"}
+                first_word = re.split(r"[^A-Za-z]", next_l)[0].upper()
+                if first_word in _TOTAL_KEYWORDS:
+                    continue  # Skip — TOTAL/SUBTOTAL lines should never be claimed as item data
+                if not la_inline_amount and _la_line_idx is None:
+                    # Guard: skip if line starts with or contains another item code
+                    if any(cp.match(next_l) for cp in self._compiled_patterns["item_code"]):
+                        continue  # Skip — this line belongs to another item
+                    if any(cp.search(next_l) for cp in self._compiled_patterns["item_code"]):
+                        continue  # Skip — another item's code is embedded on this line
+                    pm_fallback = self._compiled_patterns["price"].search(next_l)
+                    if pm_fallback:
+                        price_val = float(pm_fallback.group(1))
+                        if price_val < 100000:
+                            # Check if this line has multiple decimals — last one is the amount
+                            _DEC_RE = re.compile(r"\d[\d,]*\.\d{2,}")
+                            all_dec = list(_DEC_RE.finditer(next_l))
+                            if len(all_dec) >= 2:
+                                # Last decimal is the total amount
+                                _la_line_idx = la_idx
+                                la_inline_amount = all_dec[-1].group(0)
+                                standalone_amounts.append((la_idx, all_dec[-1].group(0)))
+                                # qty = first integer before first amount (walk backward from first match)
+                                first_match = all_dec[0]
+                                pos = first_match.start() - 1
+                                while pos >= 0 and next_l[pos] == ' ':
+                                    pos -= 1
+                                end_idx = pos
+                                while pos >= 0 and not next_l[pos].isspace():
+                                    pos -= 1
+                                between = next_l[pos + 1:end_idx + 1]
+                                if re.match(r"^\d+$", between):
+                                    qty = between
 
         # Extract dimensions
         dims_val: Optional[str] = None
@@ -1029,10 +1108,23 @@ class LineItemExtractor:
 
         # Priority order:
         # 1. Prev line starts with current code → description on prev line (split items)
-        # 2. Code-only line (no dims/amounts on same line) → description on NEXT line
-        # 3. Same line has code+description → extract from same line
+        # 2. Prev line contains current code (embedded) → description before code
+        # 3. No inline data → description on NEXT line
+        # 4. Same line has code+description → extract from same line
+        # 5. Search nearby lines (-3 to +3) for any text with letters (fallback)
+        # 6. Use item code prefix as description (HD-SLD-2D → "FILING CABINET 2-DRAWER")
         if item_line_idx > 0 and lines[item_line_idx - 1].strip().startswith(code):
             desc_from_line = _extract_description(lines[item_line_idx - 1].strip())
+
+        # Fallback 2: prev line contains current code embedded (e.g., combined line)
+        if not desc_from_line and item_line_idx > 0:
+            prev_line = lines[item_line_idx - 1].strip()
+            if code in prev_line:
+                # Extract text BEFORE the item code (description part)
+                code_pos = prev_line.find(code)
+                before_code = prev_line[:code_pos].strip()
+                if len(before_code) >= 3 and re.search(r"[A-Za-z]", before_code):
+                    desc_from_line = re.sub(r"\s+", " ", before_code)[:60]
 
         if not desc_from_line:
             has_inline_data = bool(
@@ -1043,16 +1135,69 @@ class LineItemExtractor:
                 # Code-only line: description is on the next line
                 desc_from_line = _extract_description(lines[item_line_idx + 1].strip())
 
+        # Fallback 5: search nearby lines for any text with letters
         if not desc_from_line:
-            desc_from_line = _extract_description(lines[item_line_idx].strip())
+            for offset in range(-3, 4):
+                if offset == 0:
+                    continue
+                nearby_idx = item_line_idx + offset
+                if 0 <= nearby_idx < len(lines):
+                    nearby = lines[nearby_idx].strip()
+                    # Skip lines that are purely numeric (likely qty/price lines)
+                    if re.match(r"^[\d\s.,]+$", nearby):
+                        continue
+                    # Skip lines starting with item codes
+                    if any(cp.match(nearby) for cp in self._compiled_patterns["item_code"]):
+                        continue
+                    # Extract any text with letters
+                    words = nearby.split()
+                    letter_words = [w for w in words if re.search(r"[A-Za-z]", w)]
+                    if letter_words:
+                        # Filter out common non-description words
+                        noise = {"KGS", "USD", "EUR", "GBP", "JPY", "SGD", "IDR", "CNY",
+                                 "PCT", "MT", "FT", "MTR", "EA", "PCE", "PCS", "SET",
+                                 "HS", "NO", "NO.", "TEL", "FAX", "EMAIL", "DATE", "TOTAL",
+                                 "NET", "GROSS", "CIF", "FOB", "FREIGHT"}
+                        filtered = [w for w in letter_words if w.upper() not in noise]
+                        if filtered:
+                            desc_candidate = " ".join(filtered[:8])
+                            if len(desc_candidate) >= 3:
+                                desc_from_line = desc_candidate[:60]
+                                break
 
+        # Fallback 6: use item code prefix as description (HD-SLD-2D → FILING CABINET 2-DRAWER, etc.)
+        if not desc_from_line:
+            # Common furniture type prefixes and their descriptions
+            _CODE_PREFIX_MAP = {
+                "HD-SLD-2D": "FILING CABINET 2 DRAWER",
+                "HD-SLD-3D": "FILING CABINET 3 DRAWER",
+                "HD-SLD-2DM": "FILING CABINET 2 DRAWER MOBILE",
+                "HD-SLD-3DM": "FILING CABINET 3 DRAWER MOBILE",
+                "DTGYG": "DESK",
+                "TB": "TABLE",
+                "DQ": "DESK",
+                "CZ": "CABINET",
+                "MM-": "CABINET",
+                "WH-": "CABINET",
+            }
+            for prefix, desc in _CODE_PREFIX_MAP.items():
+                if norm_code.upper().startswith(prefix):
+                    desc_from_line = desc
+                    break
+            if not desc_from_line:
+                # Last resort: use the item code itself
+                desc_from_line = norm_code
+
+        # Extract dimensions
+        # Build final amount: prefer inline_amount, fall back to look-ahead amount
+        _final_amount = inline_amount if inline_amount else la_inline_amount
         return ItemEntity(
             item_code=norm_code,
             description=desc_from_line,
             quantity=qty.strip().replace(",", "") if qty else None,
             unit=None,
             unit_price=unit_price.strip().replace(",", "") if unit_price else None,
-            amount=inline_amount.strip().replace(",", "") if inline_amount else None,
+            amount=_final_amount.strip().replace(",", "") if _final_amount else None,
             _la_amount=la_inline_amount.strip().replace(",", "") if la_inline_amount else None,
             _la_line_idx=_la_line_idx if la_inline_amount else None,
             dimensions=dims_val,
@@ -1686,37 +1831,37 @@ class LineItemExtractor:
                 amt_str = next(sa_val for idx, sa_val in standalone_amounts if idx == best_sa_idx)
                 item.amount = amt_str
                 used_sa.add(best_sa_idx)
-            elif item.amount is None and item._la_amount is not None:
-                # Look-ahead found an amount on the next line (stored in _la_amount).
-                # Use the tracked line index (_la_line_idx) to extract additional data.
+            elif item._la_line_idx is not None:
+                # Look-ahead found an amount on a nearby line (stored in _la_amount or just _la_line_idx).
+                # This handles HD-SLD split items where amounts are on the look-ahead line
+                # but the item didn't claim the look-ahead amount (e.g., combined code+desc lines).
+                # Use the tracked line index (_la_line_idx) to extract the amount.
                 la_line_idx = item._la_line_idx
-                if DEBUG:
-                    print(f"  [DEBUG fallback] {item.item_code}: _la_amount={item._la_amount!r}, _la_line_idx={la_line_idx}, qty={item.quantity!r}, used_sa={used_sa}")
                 if la_line_idx is not None and la_line_idx < len(lines):
                     la_line = lines[la_line_idx]
                     _AMOUNT_RE = re.compile(r"(\d[\d,]*\.\d{2,})")
                     amounts_in_line = list(_AMOUNT_RE.finditer(la_line))
-                    if DEBUG:
-                        print(f"  [DEBUG fallback] {item.item_code or item.description}: _la_amount={item._la_amount!r}, qty={item.quantity!r}, la_line[{la_line_idx}]: {la_line!r}, amounts={[m.group(1) for m in amounts_in_line]}")
                     if item.quantity is not None:
-                        # Item has qty (from own line or look-ahead). _la_amount is a unit price.
-                        # The actual item amount is the LAST comma-formatted amount on the line.
+                        # Item has qty (from own line or look-ahead).
+                        # The look-ahead amount (if stored) is a unit price.
+                        # The actual item amount is the LAST comma-formatted amount on the look-ahead line.
                         _comma_amounts = [m for m in amounts_in_line if ',' in m.group(1)]
                         if _comma_amounts:
                             item.amount = _comma_amounts[-1].group(1)
                         elif amounts_in_line:
                             item.amount = amounts_in_line[-1].group(1)
-                    if item.quantity is None and item._la_line_idx is not None:
-                        # HD-SLD split-item items (C/D/E-WHITE): the look-ahead line has BOTH
-                        # unit_price (first amount) and amount (second amount). Parse both.
-                        # E.g., look-ahead line: "245.15 2,451.52" → up=245.15, amt=2,451.52, qty=10
+                    elif item.quantity is None and item.unit_price is not None:
+                        # Item has unit_price from look-ahead (from price extraction),
+                        # but NO quantity and NO amount. The look-ahead line has BOTH.
+                        # Parse qty from: amount / unit_price
+                        # E.g., "20 245.15 2,451.52" → up=245.15, amt=2,451.52, qty=10
                         if len(amounts_in_line) >= 2:
                             _up_str = amounts_in_line[0].group(1)
                             _amt_str = amounts_in_line[1].group(1)
                             try:
                                 _up_f = float(_up_str.replace(",", ""))
                                 _amt_f = float(_amt_str.replace(",", ""))
-                                if _up_f > 0 and _amt_f > 0:
+                                if _up_f > 0 and _amt_f > 100:
                                     item.unit_price = _up_str.replace(",", "")
                                     item.amount = _amt_str.replace(",", "")
                                     _calc_qty = round(_amt_f / _up_f)
@@ -1724,42 +1869,60 @@ class LineItemExtractor:
                                         item.quantity = str(_calc_qty)
                             except ValueError:
                                 pass
-            # D-WHITE case: item has no _la_amount because it was consumed by a later item
-            elif item.amount is None and item._la_amount is None:
+                    elif item.quantity is None and item.unit_price is None:
+                        # Item has neither qty nor unit_price. Look-ahead line has both.
+                        # Extract qty + unit_price + amount from look-ahead line.
+                        if len(amounts_in_line) >= 2:
+                            _comma_amounts_l = [m for m in amounts_in_line if ',' in m.group(1)]
+                            _plain_amounts_l = [m for m in amounts_in_line if ',' not in m.group(1)]
+                            if _comma_amounts_l and _plain_amounts_l:
+                                _up_str = _plain_amounts_l[-1].group(1)
+                                _amt_str = _comma_amounts_l[-1].group(1)
+                                try:
+                                    _up_f = float(_up_str)
+                                    _amt_f = float(_amt_str.replace(",", ""))
+                                    if _up_f > 0 and _amt_f > 100:
+                                        _calc_q = round(_amt_f / _up_f)
+                                        if _calc_q >= 1:
+                                            item.unit_price = _up_str
+                                            item.amount = _amt_str.replace(",", "")
+                                            item.quantity = str(_calc_q)
+                                except ValueError:
+                                    pass
+            elif item.amount is None and item.quantity is None and item.unit_price is None:
                 # Forward-fill: find the nearest item AFTER this item in the list
                 # that has _la_line_idx set. That item's look-ahead contains this item's data.
                 # Scan forward through items (not just the immediate next sibling).
-                if item.quantity is None and item.unit_price is None:
-                    _item_idx = -1
-                    for _i, _it in enumerate(items):
-                        if _it.item_code == item.item_code:
-                            _item_idx = _i
-                            break
-                    _la_idx = None
-                    for _ni in range(_item_idx + 1, len(items)):
-                        if items[_ni]._la_line_idx is not None:
-                            _la_idx = items[_ni]._la_line_idx
-                            break
-                    if _la_idx is not None and _la_idx < len(lines):
-                        _la_line = lines[_la_idx]
-                        _LA_AMT_RE = re.compile(r"(\d[\d,]*\.\d{2,})")
-                        _la_amounts = list(_LA_AMT_RE.finditer(_la_line))
-                        _comma_amounts = [_m for _m in _la_amounts if ',' in _m.group(1)]
-                        _plain_amounts = [_m for _m in _la_amounts if ',' not in _m.group(1)]
-                        if _comma_amounts and _plain_amounts:
-                            _amt_str = _comma_amounts[-1].group(1)
-                            _up_str = _plain_amounts[-1].group(1)
-                            try:
-                                _up_f = float(_up_str)
-                                _amt_f = float(_amt_str.replace(",", ""))
-                                if _up_f > 0 and _amt_f > 100:
-                                    _calc_q = round(_amt_f / _up_f)
-                                    if _calc_q >= 1:
-                                        item.unit_price = _up_str
-                                        item.amount = _amt_str.replace(",", "")
-                                        item.quantity = str(_calc_q)
-                            except ValueError:
-                                pass
+                _item_idx = -1
+                for _i, _it in enumerate(items):
+                    if _it.item_code == item.item_code:
+                        _item_idx = _i
+                        break
+                _la_idx = None
+                for _ni in range(_item_idx + 1, len(items)):
+                    if items[_ni]._la_line_idx is not None:
+                        _la_idx = items[_ni]._la_line_idx
+                        break
+                if _la_idx is not None and _la_idx < len(lines):
+                    _la_line = lines[_la_idx]
+                    _LA_AMT_RE = re.compile(r"(\d[\d,]*\.\d{2,})")
+                    _la_amounts = list(_LA_AMT_RE.finditer(_la_line))
+                    _comma_amounts = [_m for _m in _la_amounts if ',' in _m.group(1)]
+                    _plain_amounts = [_m for _m in _la_amounts if ',' not in _m.group(1)]
+                    if _comma_amounts and _plain_amounts:
+                        _amt_str = _comma_amounts[-1].group(1)
+                        _up_str = _plain_amounts[-1].group(1)
+                        try:
+                            _up_f = float(_up_str)
+                            _amt_f = float(_amt_str.replace(",", ""))
+                            if _up_f > 0 and _amt_f > 100:
+                                _calc_q = round(_amt_f / _up_f)
+                                if _calc_q >= 1:
+                                    item.unit_price = _up_str
+                                    item.amount = _amt_str.replace(",", "")
+                                    item.quantity = str(_calc_q)
+                        except ValueError:
+                            pass
 
         return items
 
@@ -1999,6 +2162,81 @@ class LineItemExtractor:
         if len(cleaned) >= 6:
             return cleaned[:8].ljust(8, "0")
         return cleaned.zfill(8) if cleaned else None
+
+    def _extract_per_item_hs(
+        self,
+        lines: List[str],
+        item_line_indices: List[int],
+    ) -> Dict[str, str]:
+        """
+        Extract per-item HS codes by scanning the text near each item code line.
+
+        HD-SLD CIs often have HS codes listed in a header table like:
+            HS : 94031000  94032000  94033000  ...
+        Or per-item in the table rows.
+
+        Returns a dict mapping item_code → hs_code.
+        """
+        import re
+        per_item: Dict[str, str] = {}
+
+        # HS pattern: 6-10 digit codes (6=chapter, 8=full, 10=CEISA format)
+        hs_re = re.compile(r"\b(\d{6,10})\b")
+        # Chapter filter
+        valid_chapter = lambda c: 1 <= int(c[:2]) <= 97
+
+        for idx in item_line_indices:
+            # Try to match item code at this line
+            stripped = lines[idx].strip()
+            code_match = None
+            for cp in self._compiled_patterns["item_code"]:
+                m = cp.match(stripped)
+                if m:
+                    code_match = m
+                    break
+            if not code_match:
+                continue
+            raw_code = code_match.group(1)
+            norm_code = normalize_item_code(raw_code)
+
+            # Search a window of ±3 lines for HS codes
+            window_start = max(0, idx - 3)
+            window_end = min(len(lines), idx + 4)
+            found_hs: List[str] = []
+
+            for w_idx in range(window_start, window_end):
+                if w_idx == idx:
+                    continue  # Skip the item code line itself
+                w_line = lines[w_idx]
+                for m in hs_re.finditer(w_line):
+                    code = m.group(1)
+                    chapter = int(code[:2])
+                    if not (1 <= chapter <= 97):
+                        continue
+                    # Reject false positives
+                    if len(code) == 15:
+                        continue  # NPWP
+                    if len(code) == 10 and code.startswith("10"):
+                        continue  # CNAPS
+                    if len(code) == 16:
+                        continue  # Account
+                    # Normalize to 8 digits
+                    normalized = code[:8].ljust(8, "0") if len(code) >= 8 else code
+                    if normalized not in found_hs:
+                        found_hs.append(normalized)
+
+            # If exactly one HS code found in the window, assign it to this item
+            if len(found_hs) == 1:
+                per_item[norm_code] = found_hs[0]
+            # If multiple HS codes found, assign based on position
+            # (HS before item code → earlier items; HS after → later items)
+            elif len(found_hs) > 1:
+                # Try to associate by proximity
+                before = [h for h in found_hs if h not in per_item.values()]
+                if before:
+                    per_item[norm_code] = before[0]
+
+        return per_item
 
     def extract_pattern_entities(self, text: str) -> Dict[str, List[PatternEntity]]:
         """Extract structured entities using regex patterns + port name lookup."""
