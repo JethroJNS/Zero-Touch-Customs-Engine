@@ -38,10 +38,11 @@ RUN pip install --no-cache-dir \
     uvicorn[standard] \
     python-multipart \
     aiofiles \
+    httpx \
     sqlalchemy[asyncio] \
     asyncpg \
     psycopg2-binary \
-    paddlepaddle \
+    paddlepaddle==3.0.0 \
     "paddleocr>=2.7,<3.0" \
     "transformers>=4.40,<4.50" \
     accelerate \
@@ -49,7 +50,7 @@ RUN pip install --no-cache-dir \
     openpyxl \
     pymupdf \
     Pillow \
-    numpy \
+    "numpy<2" \
     regex
 
 # ── Copy application code ──────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ COPY ml/ /app/ml/
 COPY download_model.py /app/download_model.py
 
 # ── Environment variables ─────────────────────────────────────────────────────
-ENV PYTHONPATH=/app:${PYTHONPATH}
+ENV PYTHONPATH=/app/src:/app:${PYTHONPATH}
 ENV PYTHONUNBUFFERED=1
 
 # ── Download ML model (optional) ────────────────────────────────────────────
