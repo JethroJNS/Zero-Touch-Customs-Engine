@@ -1,17 +1,3 @@
-"""
-Model Download Script for Zero-Touch Customs Engine.
-
-Downloads the trained LayoutLMv3 model for customs document extraction.
-The model is required for ML-based entity extraction (LayoutXLM layer).
-
-Usage:
-    # Download from HuggingFace Hub
-    python download_model.py --huggingface-repo your-username/layoutlmv3-customs-v4
-
-    # Or set MODEL_REPO environment variable
-    MODEL_REPO=your-username/layoutlmv3-customs-v4 python download_model.py
-"""
-
 import argparse
 import os
 import sys
@@ -19,11 +5,6 @@ from pathlib import Path
 
 
 def download_from_huggingface(repo_id: str, target_dir: Path) -> bool:
-    """
-    Download model from HuggingFace Hub.
-
-    Requires: pip install huggingface_hub
-    """
     try:
         from huggingface_hub import snapshot_download
     except ImportError:
@@ -35,7 +16,7 @@ def download_from_huggingface(repo_id: str, target_dir: Path) -> bool:
     print(f"Target directory: {target_dir}")
 
     try:
-        # Download only the best_model subdirectory
+        # Download only best_model subdirectory
         snapshot_download(
             repo_id=repo_id,
             local_dir=target_dir,

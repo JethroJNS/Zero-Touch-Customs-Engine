@@ -1,1 +1,0 @@
-"""Hybrid extraction pipeline."""

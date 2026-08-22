@@ -1,6 +1,3 @@
-"""
-Activities / Audit Log API routes.
-"""
 import json
 from typing import Optional
 
@@ -23,7 +20,7 @@ async def list_activities(
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List activities with pagination, filtering, and search."""
+    # List activities with pagination, filtering, and search.
     query = select(Activity).order_by(Activity.created_at.desc())
 
     if action:
@@ -94,7 +91,6 @@ async def list_activities(
 
 @router.get("/activities/stats")
 async def get_activity_stats(db: AsyncSession = Depends(get_db)):
-    """Get summary statistics for the activity log."""
     total_result = await db.execute(select(func.count(Activity.id)))
     total_events = total_result.scalar() or 0
 

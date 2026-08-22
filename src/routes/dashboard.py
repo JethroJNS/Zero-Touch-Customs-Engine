@@ -1,7 +1,3 @@
-"""
-Dashboard API route.
-Provides summary statistics for the dashboard page.
-"""
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
@@ -15,21 +11,6 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 
 @router.get("/dashboard")
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    """
-    Get dashboard statistics from database.
-
-    Status System:
-    - Draft Valid: OCR result with confidence > 50%
-    - Draft Invalid: OCR result with confidence < 50% (cannot be sent)
-    - Sent: Shipment sent to CEISA system
-    - Failed: Shipment rejected by CEISA system
-    - Approved: Draft Valid that was accepted by CEISA system
-
-    Dashboard Metrics:
-    - CEISA Ready: Draft Valid + Sent count (ready for CEISA)
-    - Needs Review: Draft Invalid count (cannot be sent)
-    - CEISA Approved: Approved count (accepted by CEISA)
-    """
     try:
         # Count total shipments
         total_result = await db.execute(select(func.count(Shipment.id)))
@@ -67,7 +48,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         needs_review = draft_invalid
         ceisa_approved = approved
 
-        # Get all shipments for document type analysis
+        # Get all shipments untuk document type analysis
         all_shipments_result = await db.execute(select(Shipment))
         all_shipments = all_shipments_result.scalars().all()
 

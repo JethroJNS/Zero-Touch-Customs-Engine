@@ -1,31 +1,3 @@
-"""
-Pattern Extraction Layer — Table/line-item extraction using rule-based parsing.
-
-What this layer extracts BEST (ExtractionStrategy.PATTERN_ENTITIES):
-  - Item codes (HD-SLD-*, TB180-*, DTGYG-* — strict alphanumeric format)
-  - HS codes with chapter validation (01-97)
-  - Quantities, unit prices, amounts (numeric, comma-separated)
-  - Standalone amounts that appear on their own lines
-  - Dimensions (e.g., 1800*380*420)
-  - Weights from PL (netto/bruto with backward/forward lookup)
-  - OCR error normalization (ID-HD, WHITH-WHITE, etc.)
-
-Why Pattern wins here:
-  1. Table rows have strict positional patterns — qty always after item code,
-     amount always at end of row. Regex captures this precisely.
-  2. OCR artifacts are predictable: ID/1D confusion, H/I/E confusion in
-     "WHITE". Pattern normalization handles these.
-  3. Decimal precision with Decimal module — float errors cause wrong amounts.
-
-What this layer does NOT do well (handled by LayoutXLM layer):
-  - Free-form entity boundaries (party names, vessel names)
-  - Multilingual text (Chinese port names, Mandarin company names)
-  - Spatial context
-
-This module is adapted from Pattern/src/ner/extractor.py with
-the non-table extraction logic handled by LayoutXLM layer instead.
-"""
-
 from __future__ import annotations
 
 import re
@@ -39,11 +11,6 @@ logger = logging.getLogger(__name__)
 DEBUG = False
 
 logger = logging.getLogger(__name__)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# ENTITY PATTERNS — regex patterns for structured fields
-# ═══════════════════════════════════════════════════════════════════════════
 
 ENTITY_PATTERNS: Dict[str, List[re.Pattern]] = {
     "invoice_number": [
@@ -108,14 +75,9 @@ ENTITY_PATTERNS: Dict[str, List[re.Pattern]] = {
     ],
 }
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# ITEM ENTITY
-# ═══════════════════════════════════════════════════════════════════════════
-
 @dataclass
 class ItemEntity:
-    """A single line item extracted from CI or PL."""
+    """Item-barbar dari CI atau PL."""
     item_code: Optional[str] = None
     description: Optional[str] = None
     hs_code: Optional[str] = None
@@ -123,19 +85,19 @@ class ItemEntity:
     unit: Optional[str] = None
     unit_price: Optional[str] = None
     amount: Optional[str] = None
-    # Hidden field: the look-ahead amount (found from a line below the code line).
+    # Field tersembunyi: amount look-ahead (found from a line below the code line).
     # Used by standalone resolution as a fallback when item.amount is None.
     _la_amount: Optional[str] = None
-    # Hidden field: line index where _la_amount was found (for qty extraction in fallback).
+    # Field tersembunyi: index baris _la_amount (for qty extraction in fallback).
     _la_line_idx: Optional[int] = None
     net_weight: Optional[str] = None
     gross_weight: Optional[str] = None
     dimensions: Optional[str] = None
     cartons: Optional[str] = None
     cbm: Optional[str] = None
-    brand: Optional[str] = None      # Brand name (e.g., "TOSHIBA")
-    model: Optional[str] = None       # Model number (e.g., "180W")
-    packaging: Optional[str] = None   # Packaging type (e.g., "CT", "CARTON")
+    brand: Optional[str] = None      # Nama brand
+    model: Optional[str] = None       # Nomor model
+    packaging: Optional[str] = None   # Tipe kemasan
     confidence: float = 0.0
     source: str = "pattern"
 
@@ -163,7 +125,7 @@ class ItemEntity:
 
 @dataclass
 class PatternEntity:
-    """A single entity extracted by the Pattern layer."""
+    # Entity dari layer Pattern.
     label: str
     value: str
     confidence: float
@@ -177,16 +139,7 @@ class PatternEntity:
             "source": self.source,
         }
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# HS CODE VALIDATOR
-# ═══════════════════════════════════════════════════════════════════════════
-
 def validate_hs_code(value: str) -> Optional[str]:
-    """
-    Validate and normalize HS code using chapter check.
-    Returns normalized HS code (e.g., '9403.10') or None if invalid.
-    """
     hs = value.replace(".", "").replace(",", "").replace(" ", "")
     if not re.match(r"^\d{6,13}$", hs):
         return None
@@ -194,7 +147,7 @@ def validate_hs_code(value: str) -> Optional[str]:
         chapter = int(hs[:2])
         if not (1 <= chapter <= 97):
             return None
-        # Format: 9403.10 or 9403.10.00
+        # Format: 9403.10 atau 9403.10.00
         if len(hs) >= 8:
             return f"{hs[:4]}.{hs[4:6]}.{hs[6:8]}"
         return f"{hs[:4]}.{hs[4:6]}"
@@ -202,11 +155,7 @@ def validate_hs_code(value: str) -> Optional[str]:
         return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# ITEM CODE NORMALIZER
-# Fixes common OCR artifacts in product codes.
-# ═══════════════════════════════════════════════════════════════════════════
-
+# Perbaiki error OCR umum.
 _OCR_CODE_FIXES = [
     (re.compile(r"-WHITH$", re.IGNORECASE), "-WHITE"),
     (re.compile(r"-WHITI$", re.IGNORECASE), "-WHITE"),
@@ -217,7 +166,6 @@ _OCR_CODE_FIXES = [
 
 
 def normalize_item_code(code: str) -> str:
-    """Fix common OCR errors in item codes."""
     if not code:
         return code
     for pattern, replacement in _OCR_CODE_FIXES:
@@ -225,11 +173,7 @@ def normalize_item_code(code: str) -> str:
     return code
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# LINE ITEM EXTRACTOR
 # Parses CI/PL table structure into ItemEntity list.
-# ═══════════════════════════════════════════════════════════════════════════
-
 _NON_ITEM_CODES = re.compile(
     r"^(C/I|CO\.|LTD|INC|LLC|CORP|NO|NPWP|KODE|TELP|COMMERCIAL|UNIT"
     r"|FROM|TO|PORT|VESSEL|VOYAGE|BL|DATE"
@@ -239,19 +183,17 @@ _NON_ITEM_CODES = re.compile(
 )
 
 # Common words that appear in descriptions but are NOT item codes.
-# These are product categories, materials, and generic terms — not company names.
-# Company names should NOT be hardcoded here; they are handled by the LayoutXLM layer.
 _NON_ITEM_WORDS = {
-    # General commerce terms
+    # Komersial umum
     "FILING", "CABINET", "BLACK", "AND", "WHITE", "FURNITURE", "SET",
     "TABLE", "CHAIR", "DESK", "STORAGE", "RACK", "SHELF", "OFFICE",
     "NUMBER", "CODE", "PRODUCT", "TRADE", "NAME", "PORT", "DISCHARGE",
     "TERM", "PRICE", "UNIT", "QUANTITY", "TOTAL", "AMOUNT",
-    # Textile
+    # Tekstil
     "TEXTILE", "CORD", "POLYESTER", "NYLON", "YARN", "FABRIC", "WOVEN", "KNITTED",
     "HDSP", "DSP", "HD", "EPI", "D/2", "KGS", "KG", "METER", "METRE",
     "SYNTHETIC", "RUBBER", "STEEL", "PLATE", "CABIN", "COVER", "LAMP",
-    # Machinery
+    # Mesin
     "ASSEMBLY", "PANEL", "CONTROL", "WINDOW", "WINE", "HARNESS", "CAPILLARY",
     "CONDENSER", "HVAC", "VENTILATION", "TEMPERATURE", "LOWER", "HINGE",
     "ADJUST", "FEET", "ROLLER", "MOTOR", "PUMP", "VALVE", "BEARING",
@@ -262,28 +204,26 @@ _NON_ITEM_WORDS = {
 
 
 def _is_real_item_code(code: str) -> bool:
-    """Check if a string looks like a real product item code."""
+    # Cek apakah string adalah kode item nyata.
     if not code or len(code) < 4:
         return False
-    # Reject pure dimension strings (e.g., "1200X450X400", "1000*500*300").
-    # Dimension pattern: digit(s) followed by X/* followed by digit(s), repeated.
+    # Tolak string dimensi
     if re.match(r"^\d+[Xx*]\d+([Xx*]\d+)+$", code, re.IGNORECASE):
         return False
-    # Must contain at least one digit and one letter (real product codes)
+    # Harus ada angka dan huruf
     if not any(c.isdigit() for c in code):
         return False
     if not any(c.isalpha() for c in code):
-        # Allow purely numeric BOM codes (> 10 digits, e.g., "16231000017350")
+        # Izinkan kode BOM numerik
         if len(code) >= 11 and code.isdigit():
-            return True  # BOM/material number
+            return True  # BOM
         return False
-    # Reject container numbers (4 letters + 7+ digits)
+    # Tolak nomor kontainer
     if re.match(r"^[A-Z]{3,4}\d{6,9}$", code):
         return False
-    # Reject lot numbers / tax IDs that look like product codes
-    # (e.g., "30000714" from "HANKOOK TECHPONO:3000071468")
-    # Also reject tax ID patterns (NPWP: 15 digits with format stripped -> 15 digits)
-    # Accept purely numeric BOM codes: 11+ digits (internal material numbers)
+    # Tolak nomor lot/tax ID
+    # Tolak pattern NPWP
+    # Izinkan BOM 11+ digit
     if re.match(r"^\d{6,10}$", code):
         return False
     if _NON_ITEM_CODES.match(code):
@@ -291,10 +231,9 @@ def _is_real_item_code(code: str) -> bool:
     code_upper = code.upper()
     if code_upper in _NON_ITEM_WORDS:
         return False
-    # Reject if non-item word appears as a standalone word (not as part of hyphenated product code)
+    # Tolak kata non-item
     if len(code) >= 6:
         for word in _NON_ITEM_WORDS:
-            # Use word boundary check to avoid rejecting "HD-SLD-2DM-120-A-WHITE" because of "WHITE"
             if re.search(r"(?<![A-Z0-9-])" + re.escape(word) + r"(?![A-Z0-9-])", code_upper):
                 return False
     return True
@@ -302,42 +241,23 @@ def _is_real_item_code(code: str) -> bool:
 
 # HS code pattern for detection in OCR text
 _HS_CODE_RE = re.compile(r"\b(\d{4,12})\b")
-# Currency amount pattern
 _CURRENCY_AMOUNT_RE = re.compile(
     r"\b([1-9]\d{0,2}(?:,\d{3})+(?:\.\d{1,4})?)\b"
 )
 
 
 class LineItemExtractor:
-    """
-    Extracts line items from Commercial Invoice text using multi-strategy parsing.
-
-    The CI table format is complex:
-      - Inline: "DTGYG-HB-1 FILING CABINET 200 87.35 17,470.82"  (all on one line)
-      - Split:  "DTGYG-HB-6 FILING CABINET 1800*380*420 100"   (price on next line)
-      - Amount: "27,331.23"                                       (standalone on own line)
-
-    Strategy hierarchy:
-      1. Inline qty + unit_price + amount (all on one line)
-      2. Inline qty + unit_price (price visible, amount on next line)
-      3. Inline qty + amount (no unit_price visible)
-      4. Plain integer qty (code + qty only)
-      5. Only amount visible (no qty or price)
-      6. Sibling data sharing (A-WHITE and B-WHITE = same product, same price)
-    """
-
+    # Ekstrak item-barbar dari teks CI dengan multi-strategy parsing.
     def __init__(self):
         self._compiled_patterns = self._build_patterns()
 
     def _build_patterns(self) -> Dict[str, re.Pattern]:
-        """Compile all regex patterns once at init."""
+        # Compile all regex patterns once at init.
         return {
             "item_code": [
-                # Non-backtracking pattern: first 2 letters, then segments of
-                # (hyphen + alphanumeric). Hyphens MUST be followed by at least
-                # one alphanumeric to prevent "DTGYG-H" from matching.
+                # Pattern: 2 huruf pertama, lalu segmen dengan segmen alphanumerik setelah hyphen.
                 re.compile(r"^([A-Z]{2}[A-Z0-9]*(?:[-][A-Z0-9]+)*)(?=[\s/]|$)"),
-                # Also match BOM/material codes: purely numeric 12-16 digit numbers
+                # BOM/material codes: numeric 12-16 digit
                 re.compile(r"^(\d{12,16})\b"),
             ],
             "standalone_amount": re.compile(r"^\s*([1-9][\d,]+\.\d{2,4})\s*$"),
@@ -355,8 +275,6 @@ class LineItemExtractor:
                 r"(?<!\d)(\d{1,5})\s+([1-9]\d{0,4}\.\d{2,4})(?=\s|$)"
             ),
             # Match qty + unit keyword + price: "1600 Ea 0.17" or "1600 KGS 2.50"
-            # Unit keyword is 2-5 letters (case-insensitive) followed by space+digit
-            # We handle this dynamically in _extract_unit_keyword_strategy below
             "qty_unit_price": re.compile(
                 r"(?<!\d)(\d{1,5})\s+([A-Za-z]{2,5})\s+(\d{1,5}\.\d{2,4})(?=\s|$)",
                 re.IGNORECASE,
@@ -364,25 +282,14 @@ class LineItemExtractor:
         }
 
     def extract_from_ci(self, text: str) -> List[ItemEntity]:
-        """
-        Extract all line items from CI text.
-
-        Returns a list of ItemEntity with as many fields populated as possible.
-        Missing fields are common (OCR artifacts) — use PL merger to fill gaps.
-
-        Strategy hierarchy:
-          1. Item-code lines (traditional furniture/textile format with codes)
-          2. Amount-based fallback (textile format: no codes, just amounts + KGS)
-        """
+        # Ekstrak item-barbar dari teks CI.
         if not text:
             return []
 
-        # Strategy 1: Try item-code based extraction
+        # Ekstraksi kode item
         items = self._extract_by_item_code(text)
 
-        # Strategy 2: Amount-based fallback for textile/rubber/machinery CIs
-        # where product names serve as items and there are no traditional item codes.
-        # Only use fallback if item-code extraction failed (no items with valid item_code).
+        # Fallback amount
         has_valid_items = any(item.item_code is not None for item in items)
         if not has_valid_items:
             fallback_items = self._extract_by_amount_fallback(text)
@@ -393,8 +300,8 @@ class LineItemExtractor:
                 )
                 items = fallback_items
             else:
-                # Strategy 3: BOM-code fallback for furniture CIs
-                # BOM codes are purely numeric (12-14 digits) like "16231000017350"
+                # Fallback BOM
+                # Kode BOM numeric like "16231000017350"
                 bom_items = self._extract_by_bom_fallback(text)
                 if bom_items:
                     logger.debug(
@@ -406,20 +313,12 @@ class LineItemExtractor:
         return items
 
     def _extract_by_item_code(self, text: str) -> List[ItemEntity]:
-        """
-        Strategy 1: Extract items by item-code pattern matching.
-        Works for furniture CI format with product codes like DTGYG-HB-1.
-        Also handles BOM-style codes (12-14 digit purely numeric numbers).
-        """
         lines = text.split("\n")
-
-        # Patterns for finding item-code lines
-        # Pattern 1: alphanumeric codes starting with letter (DTGYG-HB-1, DSP-1000D/2)
+        # Pattern 1: kode alphanumeric (DTGYG-HB-1, DSP-1000D/2)
         code_re1 = re.compile(r"^([A-Z][A-Z0-9-]{2,35})(?:\s|$)")
-        # Pattern 2: BOM-style purely numeric codes (12-16 digits)
+        # Pattern 2: kode BOM numeric (12-16 digits)
         code_re2 = re.compile(r"^(\d{12,16})\b")
 
-        # Find item code lines
         item_line_indices = []
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -427,7 +326,6 @@ class LineItemExtractor:
             if m and _is_real_item_code(m.group(1)):
                 item_line_indices.append(i)
                 continue
-            # Also check BOM-style numeric codes
             m2 = code_re2.match(stripped)
             if m2 and _is_real_item_code(m2.group(1)):
                 item_line_indices.append(i)
@@ -435,7 +333,7 @@ class LineItemExtractor:
         if not item_line_indices:
             return []
 
-        # Build standalone amounts list
+        # Bangun daftar amount standalone
         standalone_amounts: List[Tuple[int, str]] = []
         for i, line in enumerate(lines):
             m = self._compiled_patterns["standalone_amount"].match(line)
@@ -444,7 +342,7 @@ class LineItemExtractor:
         if DEBUG:
             print(f"  [DEBUG] standalone_amounts detected: {[(i, v) for i, v in standalone_amounts]}")
 
-        # Extract each item
+        # Ekstrak setiap item
         items: List[ItemEntity] = []
         used_sa = set()
         if DEBUG:
@@ -457,33 +355,30 @@ class LineItemExtractor:
             if item:
                 items.append(item)
 
-        # Post-process: resolve standalone amounts
+        # Post-process: selesaikan amount standalone
         if DEBUG:
             print(f"  [DEBUG] Calling standalone resolution: used_sa={used_sa}, standalone_amounts={standalone_amounts}")
         items = self._resolve_standalone_amounts(items, standalone_amounts, used_sa, lines)
 
-        # Backward/forward fill for missing data
+        # Fill data yang hilang
         items = self._fill_missing_from_siblings(items, lines, item_line_indices)
 
-        # Validate: skip items with no identifying data
         items = [
             it for it in items
             if it.quantity or it.unit_price or it.amount or it.item_code
         ]
 
-        # Detect HS codes from text and attach to items
+        # Deteksi kode HS
         if items:
             all_text = "\n".join(lines)
             detected_hs = self._detect_hs_codes(all_text)
 
-            # Try to extract per-item HS codes by looking for HS near each item code
             per_item_hs = self._extract_per_item_hs(lines, item_line_indices)
 
             if detected_hs:
-                default_hs = detected_hs[0]  # Best scoring HS from document-level detection
+                default_hs = detected_hs[0]
                 for item in items:
                     if item.hs_code is None:
-                        # Prefer per-item HS if found, otherwise use document default
                         if item.item_code and item.item_code in per_item_hs:
                             item.hs_code = per_item_hs[item.item_code]
                         else:
@@ -500,9 +395,7 @@ class LineItemExtractor:
         used_sa: set,
         all_item_indices: List[int],
     ) -> Optional[ItemEntity]:
-        """Extract a single item from one item-code line."""
         stripped = lines[item_line_idx].strip()
-        # Try each item code pattern (alphanumeric and numeric BOM codes)
         code_match = None
         for cp in self._compiled_patterns["item_code"]:
             m = cp.match(stripped)
@@ -518,12 +411,9 @@ class LineItemExtractor:
         qty: Optional[str] = None
         unit_price: Optional[str] = None
         inline_amount: Optional[str] = None
-        la_inline_amount: Optional[str] = None  # amount found via look-ahead (may be unit price, not item amount)
+        la_inline_amount: Optional[str] = None
 
-        # ── Strategy 1: UNIT-KEYWORD FIRST (new approach)
-        # Find unit keywords (EA, KGS, MTR, etc.) followed by space+digit,
-        # then look BACK for qty and look FORWARD for price.
-        # Uses a TIGHT unit keyword list to avoid matching random words.
+        # Strategy 1: UNIT-KEYWORD FIRST
         if not (unit_price or inline_amount):
             _UNIT_KW_RE = re.compile(
                 r"\b(EA|EAS?|PCS?|PCE|PCS|SET|KGS|KG|MTR|M|FT|YD|"
@@ -552,19 +442,14 @@ class LineItemExtractor:
                     unit_price = dec_match[0]
                     break
 
-        # ── Strategy 2: AMOUNT-FIRST (fallback)
-        # Find amount first (most distinctive), then work backwards for qty and unit_price.
-        # Handles: "16000 Ea 0.17 2,748.96" where amount = 2,748.96
+        # Strategy 2: AMOUNT-FIRST (fallback)
         if not inline_amount:
             amount_match = self._compiled_patterns["embedded_amount"].search(stripped)
             if amount_match:
                 _candidate_amt = amount_match.group(1)
-                # Find unit_price: the last decimal number before the amount
                 after_code = stripped[len(code):amount_match.start()]
                 all_decimals = re.findall(r"(?<!\d)(\d{1,5}\.\d{1,4})\b", after_code)
                 _candidate_up = all_decimals[-1] if all_decimals else None
-                # Find qty: integer that appears before unit_price
-                # Guard: qty must NOT be preceded by a letter (would match "D500 245.15" from dims)
                 _candidate_qty = None
                 if _candidate_up:
                     search_area = after_code[:after_code.find(_candidate_up) + len(_candidate_up) + 5]
@@ -579,16 +464,12 @@ class LineItemExtractor:
                         else:
                             _candidate_qty = qty_match.group(1)
                             # Additional guard: verify no dimension string between qty and unit_price
-                            # (e.g., "D500 20 245.15" → qty="20" is from NEXT item, skip)
                             qty_end_abs = len(code) + qty_match.end()
                             between = stripped[qty_end_abs:qty_end_abs + 10]
                             if re.search(r"\d[A-Za-z]", between):
                                 _candidate_qty = None  # qty followed by letter (e.g., "5D") — skip
                 # Validate: qty × unit_price should ≈ amount (within 30%).
-                # This prevents D-WHITE from wrongly extracting '1,225.76' (qty='500', up='245.15').
-                # Without this check, inline_amount is set even when qty extraction fails or is wrong.
                 if _candidate_qty is None:
-                    # qty extraction failed — don't set amount yet
                     _candidate_amt = None
                     _candidate_up = None
                 else:
@@ -607,27 +488,18 @@ class LineItemExtractor:
                         unit_price = _candidate_up
                         qty = _candidate_qty
                 # If qty still missing, check next line(s) for standalone qty.
-                # Some CI formats have dimensions on the line after the item code:
-                #   WH-SBG-6
-                #   FILING CABINET 1000*900*400 100 178.76 17,875.71  ← ALL on one line
-                #   100                   ← qty (standalone, 1 line after)
-                # Some CIs have item code + ALL data on same line:
-                #   WH-SBG-9 1000*900*400 100 19,375.71  ← code + dims + qty + amount
                 if not qty and item_line_idx + 1 < len(lines):
-                    for offset in range(1, 4):  # Check up to 3 lines ahead
+                    for offset in range(1, 4):
                         if item_line_idx + offset >= len(lines):
                             break
                         next_l = lines[item_line_idx + offset].strip()
-                        # Skip dimension-only lines (e.g., "1000*900*400" alone)
                         if re.match(r"^\d+\*[Xx*]\d+$", next_l):
                             continue
                         qm = re.match(r"^(\d{1,5})\s*$", next_l)
                         if qm and next_l not in [str(sa[1]) for sa in standalone_amounts]:
                             qty = qm.group(1)
                             break
-                # Check current line itself for inline qty + amount (no unit keyword found).
-                # When the line has "code + dims + qty + amount" (e.g., WH-SBG-9 1000*900*400 100 19,375.71),
-                # extract qty by finding the amount, then walking backward to the preceding word.
+                # Check current line for inline qty + amount (no unit keyword found).
                 if not qty:
                     _AMOUNT_RE = re.compile(r"(\d[\d,]*\.\d{2,})")
                     for am in _AMOUNT_RE.finditer(stripped):
@@ -635,10 +507,7 @@ class LineItemExtractor:
                         bc = stripped[amt_start - 1] if amt_start > 0 else 'NONE'
                         if amt_start > 0 and stripped[amt_start - 1].isdigit():
                             continue
-                        # Additional guard: walk backward from the amount. If the walk hits an
-                        # ALPHABETIC char (e.g., 'D' from "D500"), OR if walking back finds
-                        # digits that are part of an item CODE (e.g., '20' from 'B-120-WHITE'),
-                        # the amount is NOT from this item's own data. Skip.
+                        # Additional guard: walk backward from the amount.
                         walk_pos = amt_start - 1
                         while walk_pos >= 0 and stripped[walk_pos] == ' ':
                             walk_pos -= 1
@@ -650,13 +519,10 @@ class LineItemExtractor:
                             walk_pos -= 1
                         word_start = walk_pos + 1
                         word = stripped[word_start:word_end + 1] if word_end >= walk_pos else ""
-                        # If the word ends with a letter (e.g., '20' from 'B-120-WHITE' → word='20'),
-                        # it's part of an item code. Skip.
-                        # Actually, check if the word CONTAINS a letter → code fragment.
+                        # Check if the word CONTAINS a letter → code fragment.
                         if re.search(r"[A-Za-z]", word):
                             continue
-                        # Walk backward from the amount, skipping the space directly before it,
-                        # then continuing back to find the start of the qty word.
+                        # Walk backward from the amount, skipping the space directly before it
                         pos = amt_start - 1
                         while pos >= 0 and stripped[pos] == ' ':
                             pos -= 1
@@ -686,13 +552,12 @@ class LineItemExtractor:
                                     break
                             break
 
-        # ── Strategy 3: qty + unit_price + amount (all inline, no HS/LARTAS between)
+        # Strategy 3: qty + unit_price + amount
         if not inline_amount:
             m3 = self._compiled_patterns["all_three"].search(stripped)
             if m3:
                 _qty, _up, _amt = m3.group(1), m3.group(2), m3.group(3)
                 # Validate: qty × unit_price should ≈ amount (within 30%)
-                # This prevents wrong extractions like D-WHITE matching "245 15 1,225.76"
                 try:
                     qf = float(_qty.replace(",", ""))
                     upf = float(_up.replace(",", ""))
@@ -705,7 +570,6 @@ class LineItemExtractor:
                     qty, unit_price, inline_amount = _qty, _up, _amt
 
         # Strategy 3b: qty + unit_price (direct, e.g., "1600 Ea 0.17" or "1600 2.50")
-        # Guard: qty must NOT be preceded by a letter (would match "D500 245.15")
         if not unit_price:
             mup = self._compiled_patterns["qty_unit_price"].search(stripped)
             if mup:
@@ -726,9 +590,6 @@ class LineItemExtractor:
                             inline_amount = am.group(1)
 
         # Strategy 3c: qty + price (direct, e.g., "1600 2.50")
-        # Only use this when there's also an inline amount (otherwise qty_price
-        # can incorrectly match numbers from dimension strings like "1800*380*420")
-        # Also guard: qty must NOT be preceded by a letter (would match "D500 245.15")
         if not unit_price and not inline_amount:
             am_check = self._compiled_patterns["embedded_amount"].search(stripped)
             if am_check:
@@ -779,9 +640,6 @@ class LineItemExtractor:
                 qty = m4.group(1)
 
         # Strategy 6: only amount visible — ONLY from item's own line (starts with code).
-        # Prevents extracting other items' amounts (e.g., D-WHITE wrongly getting C-WHITE's amount).
-        # Also validate: only accept if amount ≈ qty × unit_price (guards against wrong amounts from
-        # partial-line remaining text, e.g., D-WHITE finding '1,225.76' from F-WHITE's data).
         if not inline_amount and qty and unit_price:
             if stripped.startswith(norm_code or ''):
                 em = self._compiled_patterns["embedded_amount"].search(stripped)
@@ -797,8 +655,7 @@ class LineItemExtractor:
                     except ValueError:
                         inline_amount = em.group(1)
 
-        # ── Extra: qty AFTER dimensions (HD-SLD style: "code desc HxWxD qty" — qty comes after dims)
-        # E.g., "HD-SLD-2DM-120-E-WHITE FILING CABINET H1850*W1200*D500 10"
+        # Extra: qty AFTER dimensions (HD-SLD style: "code desc HxWxD qty" — qty comes after dims)
         if not qty:
             dim_m = self._compiled_patterns["dims"].search(stripped)
             if dim_m:
@@ -806,10 +663,10 @@ class LineItemExtractor:
                 pos = dim_m.end()
                 while pos < len(stripped) and stripped[pos] in ' *XxHhWwDd':
                     pos += 1
-                # Skip trailing spaces only — qty must be on the SAME line
+                # Skip trailing spaces only
                 while pos < len(stripped) and stripped[pos] == ' ':
                     pos += 1
-                # Now collect digits — only if we stayed on the same line (not at end)
+                # Collect digits — only if we stayed on the same line (not at end)
                 if pos < len(stripped) and stripped[pos].isdigit():
                     num_end = pos
                     while num_end < len(stripped) and stripped[num_end].isdigit():
@@ -819,10 +676,7 @@ class LineItemExtractor:
                         qty = after_dim
                         if DEBUG:
                             print(f"  [DEBUG EXTRACT] {norm_code}: found qty={qty!r} after dims on line {item_line_idx}")
-        # ── Generic qty-prefix-less amount pattern:
-        # When unit_price and inline_amount are missing but the line has exactly 2 amounts
-        # (one plain decimal, one comma-formatted), extract as unit_price + amount + compute qty.
-        # This handles furniture/textile format: "code description unit_price amount" where qty is absent.
+        # Generic qty-prefix-less amount pattern:
         if not qty and not unit_price and not inline_amount:
             _B_AMOUNT_RE = re.compile(r"(\d[\d,]*\.\d{2,})")
             _all_amounts = list(_B_AMOUNT_RE.finditer(stripped))
@@ -855,42 +709,36 @@ class LineItemExtractor:
         has_dims = bool(self._compiled_patterns["dims"].search(stripped))
         has_amount = bool(inline_amount)
         # Always look ahead up to 4 lines when current line is code-only (no dims/amount).
-        # This lets us find data on the next line for split-item format.
         max_la = 4 if (has_dims or has_amount) else 4
         # Track la_idx for the ItemEntity constructor (needed for backward look too)
         la_idx: Optional[int] = None
         _la_line_idx: Optional[int] = None  # Initialize for backward look
 
-        # ── Backward look for split-item format (DTGYG style: data BEFORE item code line)
-        # When the look-ahead range is effectively empty AND the item has no qty/amount,
-        # check the line immediately before the item code line for split qty+amount data.
+        # Backward look for split-item format (DTGYG style: data BEFORE item code line)
         if not qty and not inline_amount and item_line_idx > 0:
             prev_l = lines[item_line_idx - 1].strip()
-            # Check if prev line is a split qty+amount line (no item code)
+            # Cek apakah baris sebelumnya split (no item code)
             prev_is_split = bool(
                 re.match(r"^\d+\s+\d", prev_l) and
                 not any(cp.match(prev_l) for cp in self._compiled_patterns["item_code"])
             )
-            # ALSO guard the backward walk: skip if prev line starts with an item code.
-            # This prevents B-WHITE (HD-SLD-2D) from stealing F-WHITE's (HD-SLD-2DM) qty
-            # when F-WHITE's line precedes B-WHITE in the document order.
+            # Guard the backward walk: skip if prev line starts with an item code.
             prev_starts_with_item_code = any(
                 cp.match(prev_l) for cp in self._compiled_patterns["item_code"]
             )
             if prev_is_split:
                 if DEBUG:
                     print(f"  [DEBUG BACK] {norm_code}: found split data on prev line: {prev_l!r}")
-                # Parse qty and amount from the split line
+                # Parse qty dan amount dari baris split
                 split_m = re.match(r"^(\d+)\s+([\d,]+\.\d{2,4})\s*$", prev_l)
                 if split_m:
                     qty = split_m.group(1)
                     inline_amount = split_m.group(2)
             elif prev_starts_with_item_code:
-                # Prev line is another item's line — do NOT steal its data
+                # Prev line is another item's line
                 pass
             else:
-                # Also check if the previous line has a look-ahead amount from the previous item.
-                # This handles HD-SLD style where the look-ahead line has: description qty amount.
+                # Cek jika baris sebelumnya ada look-ahead from the previous item.
                 prev_l = lines[item_line_idx - 1].strip()
                 _LA_AMOUNT_RE = re.compile(r"(\d[\d,]+\.\d{2,4})\b")
                 prev_amounts = list(_LA_AMOUNT_RE.finditer(prev_l))
@@ -898,8 +746,7 @@ class LineItemExtractor:
                     amt_match = prev_amounts[0]
                     amt_val = float(amt_match.group(1).replace(",", ""))
                     if amt_val < 100000:
-                        # Guard: if the char before the amount is a digit, the amount is part
-                        # of a dimension string (e.g., "H1850*W1200*D500 245.15"). Skip.
+                        # Guard: if the char before the amount is a digit, the amount is part of a dimension string (e.g., "H1850*W1200*D500 245.15").
                         if amt_match.start() > 0 and prev_l[amt_match.start() - 1].isdigit():
                             # Amount is embedded in dimensions — skip this amount entirely
                             pass
@@ -922,7 +769,6 @@ class LineItemExtractor:
                                     print(f"  [DEBUG BACK] {norm_code}: found qty+amount from prev line: qty={between!r}, amount={amt_match.group(1)!r}")
                             else:
                                 # Couldn't find valid qty via backward walk (e.g., "FILING CABINET 245.15 ...").
-                                # Set la_inline_amount so standalone resolution fallback can use it.
                                 la_inline_amount = amt_match.group(1)
                                 _la_line_idx = item_line_idx - 1
                                 if DEBUG:
@@ -931,7 +777,7 @@ class LineItemExtractor:
         for la in range(1, min(max_la, next_item_idx - item_line_idx)):
             la_idx = item_line_idx + la
             next_l = lines[la_idx].strip()
-            # Skip lines that start with another item code — those belong to the next item.
+            # Skip baris dengan kode item lain — those belong to the next item.
             if any(cp.match(next_l) for cp in self._compiled_patterns["item_code"]):
                 continue
             if DEBUG:
@@ -944,7 +790,6 @@ class LineItemExtractor:
                     qty = qm.group(1)
 
             # Claim standalone price — but NOT if qty_price will fire (qty_price extracts both).
-            # qty_price is more precise for "qty price" pairs.
             if not unit_price:
                 qty_price_m = self._compiled_patterns["qty_price"].search(next_l)
                 if qty_price_m and qty_price_m.start() < (len(next_l) - 1):
@@ -963,8 +808,6 @@ class LineItemExtractor:
                         unit_price = pm.group(1)
 
             # Always track _la_line_idx when an embedded amount is found in range.
-            # This enables standalone resolution fallback even when the amount line
-            # doesn't start with the item code (e.g., HD-SLD combined code+desc lines).
             em_la = self._compiled_patterns["embedded_amount"].search(next_l)
             if em_la:
                 if DEBUG:
@@ -986,8 +829,6 @@ class LineItemExtractor:
                         standalone_amounts.append((la_idx, em_la.group(1)))
                     else:
                         # Look-ahead amount differs from inline_amount.
-                        # Validate: trust the look-ahead amount only if qty × price ≈ look-ahead amount.
-                        # This prevents cross-item contamination.
                         try:
                             qty_f = float(str(qty).replace(",", "")) if qty else 0
                             price_f = float(str(unit_price).replace(",", "")) if unit_price else 0
@@ -1008,8 +849,6 @@ class LineItemExtractor:
                         except (ValueError, ZeroDivisionError):
                             pass
                 # Extract qty from this look-ahead line (walk backward from amount to find integer).
-                # Do this REGARDLESS of whether the line starts with the item code —
-                # HD-SLD items have amount on a separate line that doesn't start with the code.
                 if not qty:
                     pos = em_la.start() - 1
                     while pos >= 0 and next_l[pos] == ' ':
@@ -1022,9 +861,6 @@ class LineItemExtractor:
                         qty = between
             else:
                 # No comma-formatted embedded amount found on this look-ahead line.
-                # Try the price pattern as a fallback (plain decimal amounts like 450.00).
-                # This handles DTGYG-style items where amounts are plain decimals (no commas).
-                # ALWAYS check for TOTAL-like lines first, regardless of _la_line_idx state.
                 _TOTAL_KEYWORDS = {"TOTAL", "SUBTOTAL", "GRAND TOTAL", "AMOUNT", "JUMLAH", "NETTO", "BRUTO"}
                 first_word = re.split(r"[^A-Za-z]", next_l)[0].upper()
                 if first_word in _TOTAL_KEYWORDS:
@@ -1059,7 +895,7 @@ class LineItemExtractor:
                                 if re.match(r"^\d+$", between):
                                     qty = between
 
-        # Extract dimensions
+        # Ekstrak dimensi
         dims_val: Optional[str] = None
         for dline_idx in range(item_line_idx, min(item_line_idx + 4, len(lines))):
             dmatch = self._compiled_patterns["dims"].search(lines[dline_idx])
@@ -1067,16 +903,11 @@ class LineItemExtractor:
                 dims_val = dmatch.group(1)
                 break
 
-        # ── Description extraction for furniture-style items ─────────────────────
+        # Description extraction for furniture-style items
         desc_from_line: Optional[str] = None
 
         def _extract_description(text: str) -> Optional[str]:
-            """
-            Extract product description from a furniture-style item line.
-            Returns the text BEFORE the first dimension or standalone quantity.
-            E.g., "FILING CABINET 1000*900*400" → "FILING CABINET"
-            Returns None if no meaningful description found (e.g., code+dimensions+qty on same line).
-            """
+            # Extract product description from a furniture-style item line.
             if text.startswith(code):
                 text = text[len(code):].strip()
             if not text:
@@ -1106,13 +937,6 @@ class LineItemExtractor:
                     return re.sub(r"\s+", " ", desc_candidate)[:60]
             return None
 
-        # Priority order:
-        # 1. Prev line starts with current code → description on prev line (split items)
-        # 2. Prev line contains current code (embedded) → description before code
-        # 3. No inline data → description on NEXT line
-        # 4. Same line has code+description → extract from same line
-        # 5. Search nearby lines (-3 to +3) for any text with letters (fallback)
-        # 6. Use item code prefix as description (HD-SLD-2D → "FILING CABINET 2-DRAWER")
         if item_line_idx > 0 and lines[item_line_idx - 1].strip().startswith(code):
             desc_from_line = _extract_description(lines[item_line_idx - 1].strip())
 
@@ -1188,8 +1012,7 @@ class LineItemExtractor:
                 # Last resort: use the item code itself
                 desc_from_line = norm_code
 
-        # Extract dimensions
-        # Build final amount: prefer inline_amount, fall back to look-ahead amount
+        # Ekstrak dimensi
         _final_amount = inline_amount if inline_amount else la_inline_amount
         return ItemEntity(
             item_code=norm_code,
@@ -1206,30 +1029,9 @@ class LineItemExtractor:
             source="pattern",
         )
 
-    # ── Amount-Based Fallback ────────────────────────────────────────────────
-    # Used when no item codes are found (textile/rubber/machinery CIs).
-    # These documents have: product description + amount + KGS qty per line.
-    # No traditional alphanumeric item codes — the description itself is the item.
-
+    # Amount-Based Fallback
     def _extract_by_amount_fallback(self, text: str) -> List[ItemEntity]:
-        """
-        Strategy 2: Amount-based fallback for textile/rubber/machinery CIs.
-
-        These documents don't have traditional item codes. Instead:
-          - Product names/descriptions ARE the items
-          - Amounts appear on their own lines (often corrupted by OCR)
-          - Quantities appear as "N KGS" near the amount line
-          - Unit prices appear as "X USD/kg" near the amount line
-
-        The OCR output for these documents often looks like:
-          TRHU5267853 ABP219A C260328-82 2026/3/28 19201 KGS USD USD 48386.52
-          ... HDSP 1300D/2 ... DSP 1000D/2 ... 2.47 /kg ... 2.52 /kg ...
-
-        Strategy:
-          1. Find amount lines (standalone currency amounts ≥ 100)
-          2. Look in adjacent lines (±3) for qty, unit_price, and description
-          3. Create items with partial data — PL merger fills the rest
-        """
+        # Strategy 2: Amount-based fallback for textile/rubber/machinery CIs.
         lines = text.split("\n")
         detected_hs = self._detect_hs_codes(text)
         first_hs = detected_hs[0] if detected_hs else None
@@ -1239,7 +1041,6 @@ class LineItemExtractor:
         used_per_kg_values: set = set()  # Track unit prices already assigned
 
         # Detect document total qty from "TOTAL" line to filter out grand total rows
-        # e.g., "TOTAL 81524 KGS USD 200186.88"
         total_qty_kgs: Optional[str] = None
         total_re = re.compile(r"\bTOTAL\s+([1-9]\d{0,8}(?:\.\d+)?)\s*KGS\b", re.IGNORECASE)
         for line in lines:
@@ -1252,11 +1053,8 @@ class LineItemExtractor:
 
         # Amount regex — three patterns for different formats:
         #   1. Currency-prefixed amount (greedy): currency + digits + optional comma-thousands + decimal
-        #      e.g. "USD24193.65", "USD336,873.60", "USD2,228.00/MT"
-        #      - Non-greedy \d+? ensures we get the full number before the decimal
         #   2. Currency-prefixed with comma thousands: handles "USD336,873.60" correctly
         #   3. Standard plain decimal: word boundary + digits + decimal
-        #      e.g. "48386.52" (US format with no comma thousands)
         # Take the largest value to prefer total over unit prices.
         _amount_currency = re.compile(
             r"(?:(?:USD|EUR|GBP|JPY|SGD|IDR|AUD|CNY|THB|KRW)[\s]*)?(\d+?\.\d{2})"
@@ -1285,25 +1083,20 @@ class LineItemExtractor:
             #   1. Currency-prefixed with comma thousands: handles "USD336,873.60" correctly
             #   2. Currency-prefixed greedy: handles "USD24193.65" (no comma) via non-greedy \d+?
             #   3. Standard plain decimal: handles "48386.52" at word boundary
-            # Prefer the largest (most complete) match to get line totals over unit prices.
-            # Unit-price amounts like "2,228.00/MT" are skipped (followed by /KG, /MT, etc.)
             cu_matches = _amount_currency.findall(stripped)
             eu_matches = _amount_european.findall(stripped)
             std_matches = _amount_standard.findall(stripped)
-            # Normalize: currency/european have commas for thousands, standard doesn't
             def norm_val(s):
                 return float(s.replace(",", ""))
             all_candidates = [(norm_val(m), m) for m in cu_matches + eu_matches + std_matches]
             if not all_candidates:
                 continue
-            # Sort by value descending; skip amounts followed by unit labels (/MT, /KG)
             all_candidates.sort(key=lambda x: x[0], reverse=True)
             amount_val, amount_str = 0.0, None
             for val, m_str in all_candidates:
                 if val < 100 or val > 1_000_000:
                     continue
                 # Check if this amount is a unit price (followed by /MT, /KG, etc.)
-                # by finding its position in the stripped line
                 pos = stripped.find(m_str)
                 if pos >= 0:
                     after = stripped[pos + len(m_str):pos + len(m_str) + 5]
@@ -1320,8 +1113,7 @@ class LineItemExtractor:
             context_lines = lines[window_start:window_end]
             context = " ".join(context_lines)
 
-            # Find qty from KGS/MT:
-            # Priority: (1) same-line, (2) immediately-previous line, (3) any other line in context
+            # Find qty from KGS/MT
             qty_str: Optional[str] = None
             unit_str: Optional[str] = None
             # 1. Same-line KGS/MT match (preferred — qty and amount on same OCR line)
@@ -1329,7 +1121,6 @@ class LineItemExtractor:
             if kgs_match:
                 qty_str = kgs_match.group(1)
                 unit_str = kgs_match.group(2).upper()
-                # Normalize trailing zeros for KGS (e.g. 151.000 -> 151) but keep 1 decimal for MT
                 if unit_str == "KGS":
                     if "." in qty_str:
                         qty_str = f"{float(qty_str):.0f}"
@@ -1354,8 +1145,7 @@ class LineItemExtractor:
                         unit_str = kgs_m.group(2).upper()
                         break
 
-            # Find unit_price from /kg:
-            # Priority: (1) same-line, (2) immediately-previous line, (3) any other line in context
+            # Find unit_price from /kg
             unit_price_str: Optional[str] = None
             # 1. Same-line /kg price
             per_kg_match = per_kg_re.search(stripped)
@@ -1373,7 +1163,7 @@ class LineItemExtractor:
                         unit_price_str = pk_m.group(1)
                         break
 
-            # Compute unit_price from amount/qty if qty found but no /kg price
+            # Hitung harga dari amount/qty if qty found but no /kg price
             if not unit_price_str and qty_str and amount_val > 0:
                 try:
                     qty_f = float(qty_str)
@@ -1385,9 +1175,7 @@ class LineItemExtractor:
                 except (ValueError, ZeroDivisionError):
                     pass
 
-            # Extract description from context
-            # Strategy: search same line first, then immediately preceding line.
-            # Avoids picking up product names from OTHER items in the ±3 context window.
+            # Ekstrak deskripsi from context
             description: Optional[str] = None
             product_re = re.compile(
                 r"\b(H?DSP\s*\d{3,4}[DABC]/\d|D?HDSP\s*\d{3,4}[DABC]/\d|"
@@ -1400,9 +1188,6 @@ class LineItemExtractor:
                 re.IGNORECASE
             )
             # 1. Look in previous lines for product category (SYNTHETIC RUBBER often on own line)
-            #    e.g. "SYNTHETIC RUBBER" on line N, "KUMHO 1502NF ..." on line N+1
-            #    Also for textile CIs: "TEXTILE CORD" can be 2-4 lines above item lines.
-            #    Combine: product from prev line + brand from current line
             product_words: List[str] = []
             category_re = re.compile(
                 r"\b(TEXTILE\s+CORD|POLYESTER\s+CORD|SYNTHETIC\s+RUBBER|CORD\s+FABRIC|TIRE\s+CORD)\b",
@@ -1413,9 +1198,6 @@ class LineItemExtractor:
                 re.IGNORECASE,
             )
             # For textile/synthetic products, look back up to 5 lines for category + DSP code.
-            # Strategy: DSP code from the MOST RECENT applicable line (offset=1 first, then
-            # broader lookback for category only). We stop after finding the first DSP so
-            # we don't pick up codes from earlier items.
             product_words: List[str] = []
             found_dsp = False
             category_re = re.compile(
@@ -1452,7 +1234,6 @@ class LineItemExtractor:
             # 2. Same line only (no product from lookback)
             if not product_words:
                 product_words = product_re.findall(stripped)
-                # Find EPI on next line if not on current line
                 if not any("EPI" in w.upper() for w in product_words) and i + 1 < len(lines):
                     epi_next = re.search(r"\b(\d+EPI)\b", lines[i + 1], re.IGNORECASE)
                     if epi_next and epi_next.group(1) not in product_words:
@@ -1472,8 +1253,8 @@ class LineItemExtractor:
                 if len(desc_candidate) > 3:
                     description = desc_candidate[:60]
 
-            # Compute confidence based on what we found
-            confidence = 0.3  # base confidence for fallback items
+            # Hitung confidence based on what we found
+            confidence = 0.3
             if qty_str and unit_price_str and amount_val > 0:
                 try:
                     expected = float(qty_str) * float(unit_price_str)
@@ -1488,7 +1269,7 @@ class LineItemExtractor:
             elif qty_str or unit_price_str:
                 confidence = 0.50
 
-            # Skip if we found no meaningful data
+            # Skip jika tidak ada data
             if not (qty_str or unit_price_str or description):
                 continue
 
@@ -1509,13 +1290,13 @@ class LineItemExtractor:
                 source="pattern:amount_fallback",
             ))
 
-            # Track used KGS and per_kg values to avoid assigning them to subsequent items
+            # Track nilai KGS yang dipakai to avoid assigning them to subsequent items
             if qty_str:
                 used_kgs_values.add(qty_str)
             if unit_price_str:
                 used_per_kg_values.add(unit_price_str)
 
-        # Deduplicate items with same amount (±0.01)
+        # Deduplicate item with same amount (±0.01)
         if items:
             deduped: List[ItemEntity] = []
             seen_amounts: set = set()
@@ -1533,41 +1314,19 @@ class LineItemExtractor:
 
         return items
 
-    # ── BOM-Code Fallback ────────────────────────────────────────────────────
-    # Used for furniture/refrigeration CIs where item codes are BOM numbers
-    # (purely numeric 12-14 digit material codes like "16231000017350").
-    # These codes start with digits and don't match the letter-prefixed item_code pattern.
-
     def _extract_by_bom_fallback(self, text: str) -> List[ItemEntity]:
-        """
-        Strategy 3: BOM-code fallback for furniture/refrigeration CIs.
-
-        Table columns: BOM_CODE | DESCRIPTION | HS | QTY | UNIT | PRICE | AMOUNT
-
-        OCR often splits table rows across multiple lines. We handle this by:
-          1. Splitting text into lines
-          2. For each line containing a BOM code, also append the next 1-2 lines
-             (within ~150 chars of the BOM code) to form a complete row context
-          3. Extract quantity, unit, unit_price, amount from the merged row text
-        """
+        # Fallback untuk kode BOM numeric.
         lines = text.split("\n")
         items: List[ItemEntity] = []
         seen_bom_codes: set = set()
 
         # Regex patterns
-        # BOM code: 10-16 char codes that are alphanumeric (numeric prefix with optional embedded letters).
-        # This is a generalization that matches any BOM/material numbering convention used in
-        # industrial/furniture CI formats. The pattern matches:
         #   - Pure numeric: 10-16 digits (e.g., 16231000017350, 1234567890123)
         #   - Alphanumeric: digit prefix + 4-13 alphanumeric chars (e.g., 16231000A52167)
         bom_re = re.compile(r"\b(\d{4,16}[A-Z0-9]{0,8})\b", re.IGNORECASE)
-        # Alternative: purely numeric codes 12-16 digits (for cases where no letters embedded)
         bom_numeric_re = re.compile(r"\b(\d{12,16})\b")
-        # European amounts: 1.234,56  (period=thousands, comma=decimal)
         euro_re = re.compile(r"\b(\d{1,3}\.\d{3}(?:,\d{2}))\b")
-        # European small qty: 3,12 or 0,0294  (comma-decimal, no group separator)
         euro_small_re = re.compile(r"\b(\d+(?:,\d{1,4}))\b")
-        # Plain integer qty: 1200, 4800, 2400  (standalone integers, not in euro amounts)
         plain_int_re = re.compile(r"(?<![.\d])(\d{1,5})(?![.,\d])")
         # Units
         unit_re = re.compile(r"\b([A-Z]{2,4})\b")
@@ -1579,7 +1338,7 @@ class LineItemExtractor:
         for i, line in enumerate(lines):
             stripped = line.strip()
 
-            # Find BOM code using alphanumeric pattern first, then numeric fallback
+            # Cari kode BOM first, then numeric fallback
             bom_matches = bom_re.findall(stripped)
             if not bom_matches:
                 bom_matches = bom_numeric_re.findall(stripped)
@@ -1591,13 +1350,12 @@ class LineItemExtractor:
             bom_code = bom_matches[0]
             if bom_code in seen_bom_codes:
                 continue
-            # Filter: must be at least 10 chars (distinguishes BOM from ordinary part numbers)
+            # Filter: min 10 karakter
             if len(bom_code) < 10:
                 continue
             seen_bom_codes.add(bom_code)
 
-            # Merge subsequent lines that are part of the same row
-            # (within ~150 chars of BOM code, no new BOM code)
+            # Merge baris berikutnya that are part of the same row
             merged = stripped
             char_len = len(stripped)
             for j in range(i + 1, min(i + 3, len(lines))):
@@ -1615,11 +1373,11 @@ class LineItemExtractor:
 
             merged_lower = merged.lower()
 
-            # Skip garbage rows
+            # Skip garbage
             if garbage_re.search(merged):
                 continue
 
-            # Extract HS code from merged row
+            # Ekstrak HS from merged row
             hs_match = re.search(r"\b(\d{8})\b", merged)
             hs_code = None
             if hs_match:
@@ -1628,9 +1386,8 @@ class LineItemExtractor:
                 if 1 <= chapter <= 97:
                     hs_code = self._normalize_hs(potential_hs)
 
-            # Extract description: text after BOM code, before any numeric content (prices/qtys)
+            # Ekstrak deskripsi: text after BOM code, before any numeric content (prices/qtys)
             # Step 1: clean the merged row for description extraction
-            # IMPORTANT: remove euro amounts BEFORE HS removal so amounts like 225,38 are removed intact
             clean_for_desc = re.sub(r"\s*\d{1,3}\.\d{3},\d{2}\b", "", merged)  # large euro amounts
             clean_for_desc = re.sub(r"\s*\d+,\d{2}\b", "", clean_for_desc)  # small euro amounts like 225,38
             clean_for_desc = re.sub(r"\s*\d+,\d{1,4}\b", "", clean_for_desc)  # euro qtys 0,0294
@@ -1639,8 +1396,7 @@ class LineItemExtractor:
             clean_for_desc = re.sub(r"(Dek[a-z]+\s+[Ii]mpor?)\b.*", "", clean_for_desc, re.IGNORECASE)
             # Remove trailing unit labels
             clean_for_desc = re.sub(r"\s+(INE|KGM|TNE|Ea|Pcs|UN|Ct)\s*$", "", clean_for_desc, flags=re.IGNORECASE)
-            # Extract description: after BOM code, capture text (letters/spaces/hyphens only).
-            # Match any BOM code pattern (digits + optional letters), then capture description.
+            # Ekstrak deskripsi: after BOM code, capture text (letters/spaces/hyphens only).
             desc_match = re.match(
                 rf"{re.escape(bom_code)}(?:\s+(?:INE|KGM|TNE|Ea|Pcs|UN|Ct))?\s+([A-Za-z][A-Za-z\s\-'.]{{2,60}})",
                 clean_for_desc,
@@ -1651,14 +1407,14 @@ class LineItemExtractor:
                 if len(desc_text) > 2:
                     description = desc_text[:60]
 
-            # Extract all European amounts (these are prices, not quantities)
+            # Ekstrak amount Europe (these are prices, not quantities)
             euro_amounts = []
             for m in euro_re.finditer(merged):
                 val = euro_to_float(m.group(1))
                 if 10 <= val <= 200_000:
                     euro_amounts.append(val)
 
-            # Extract plain integer quantities — pick LARGEST (1200 > 294 > 276)
+            # Ekstrak qty integer — pick LARGEST (1200 > 294 > 276)
             plain_qtys = []
             for m in plain_int_re.finditer(merged):
                 val = int(m.group(1))
@@ -1667,27 +1423,25 @@ class LineItemExtractor:
             # Sort descending: prefer large item quantities over small fragments
             plain_qtys.sort(reverse=True)
 
-            # Extract unit
+            # Ekstrak unit
             units = [m.group(1) for m in unit_re.finditer(merged)
                      if m.group(1) in ("INE", "KGM", "TNE", "EA", "PCS", "UN", "CT", "EA")]
             unit = units[0] if units else "TNE"
             unit_map = {"INE": "TNE", "KGM": "KGM", "EA": "NMP", "PCS": "NMP", "UN": "NMP", "CT": "NMP"}
             customs_unit = unit_map.get(unit, "TNE")
 
-            # Determine qty, unit_price, amount
+            # Tentukan qty, harga, amount
             qty_val: Optional[float] = None
             unit_price_val: Optional[float] = None
             amount_val: Optional[float] = None
 
             # Strategy 1: plain integer qty FIRST (e.g., 1200, 4800, 2400)
-            # These are item quantities in standard units — always prefer these
             for q in plain_qtys:
-                if 100 <= q <= 50_000:  # Large plain integers = item quantities
+                if 100 <= q <= 50_000:
                     qty_val = float(q)
                     break
 
             # Strategy 2: small euro qty (e.g., 4,2 or 0,0294)
-            # Only if NO large plain integer was found
             if not qty_val:
                 for m in euro_small_re.finditer(merged):
                     val = euro_to_float(m.group(1))
@@ -1732,7 +1486,7 @@ class LineItemExtractor:
         return items
 
     def _skip_line(self, stripped: str) -> bool:
-        """Return True if this line is likely not an item line (skip it)."""
+        # Cek apakah baris bukan baris item.
         # Skip pure numeric lines
         if re.match(r"^[\d\s,.\-+]+$", stripped):
             return True
@@ -1765,7 +1519,7 @@ class LineItemExtractor:
         current_idx: int,
         all_indices: List[int],
     ) -> int:
-        """Return index of next item code line after current_idx."""
+        # Cari index baris kode item berikutnya.
         for i in all_indices:
             if i > current_idx:
                 return i
@@ -1778,11 +1532,7 @@ class LineItemExtractor:
         used_sa: set,
         lines: List[str],
     ) -> List[ItemEntity]:
-        """
-        Resolve standalone amounts (on their own line) to the correct item.
-        Uses reverse iteration (later items claim first).
-        Ratio-based matching: qty * price ≈ amount (within 15%).
-        """
+        # Selesaikan amount standalone ke item yang benar.
         inline_amounts_seen = set()
         for item in items:
             if item.amount:
@@ -1793,7 +1543,7 @@ class LineItemExtractor:
                 except ValueError:
                     pass
 
-        # Debug output (kept as info for pipeline debugging)
+        # Debug output
         if False:
             print(f"  [DEBUG standalone] items: ...")
             print(f"  [DEBUG standalone] standalone_amounts: ...")
@@ -1833,9 +1583,6 @@ class LineItemExtractor:
                 used_sa.add(best_sa_idx)
             elif item._la_line_idx is not None:
                 # Look-ahead found an amount on a nearby line (stored in _la_amount or just _la_line_idx).
-                # This handles HD-SLD split items where amounts are on the look-ahead line
-                # but the item didn't claim the look-ahead amount (e.g., combined code+desc lines).
-                # Use the tracked line index (_la_line_idx) to extract the amount.
                 la_line_idx = item._la_line_idx
                 if la_line_idx is not None and la_line_idx < len(lines):
                     la_line = lines[la_line_idx]
@@ -1843,8 +1590,6 @@ class LineItemExtractor:
                     amounts_in_line = list(_AMOUNT_RE.finditer(la_line))
                     if item.quantity is not None:
                         # Item has qty (from own line or look-ahead).
-                        # The look-ahead amount (if stored) is a unit price.
-                        # The actual item amount is the LAST comma-formatted amount on the look-ahead line.
                         _comma_amounts = [m for m in amounts_in_line if ',' in m.group(1)]
                         if _comma_amounts:
                             item.amount = _comma_amounts[-1].group(1)
@@ -1852,9 +1597,6 @@ class LineItemExtractor:
                             item.amount = amounts_in_line[-1].group(1)
                     elif item.quantity is None and item.unit_price is not None:
                         # Item has unit_price from look-ahead (from price extraction),
-                        # but NO quantity and NO amount. The look-ahead line has BOTH.
-                        # Parse qty from: amount / unit_price
-                        # E.g., "20 245.15 2,451.52" → up=245.15, amt=2,451.52, qty=10
                         if len(amounts_in_line) >= 2:
                             _up_str = amounts_in_line[0].group(1)
                             _amt_str = amounts_in_line[1].group(1)
@@ -1871,7 +1613,6 @@ class LineItemExtractor:
                                 pass
                     elif item.quantity is None and item.unit_price is None:
                         # Item has neither qty nor unit_price. Look-ahead line has both.
-                        # Extract qty + unit_price + amount from look-ahead line.
                         if len(amounts_in_line) >= 2:
                             _comma_amounts_l = [m for m in amounts_in_line if ',' in m.group(1)]
                             _plain_amounts_l = [m for m in amounts_in_line if ',' not in m.group(1)]
@@ -1890,9 +1631,7 @@ class LineItemExtractor:
                                 except ValueError:
                                     pass
             elif item.amount is None and item.quantity is None and item.unit_price is None:
-                # Forward-fill: find the nearest item AFTER this item in the list
-                # that has _la_line_idx set. That item's look-ahead contains this item's data.
-                # Scan forward through items (not just the immediate next sibling).
+                # Forward-fill: find the nearest item AFTER this item in the list that has _la_line_idx set. That item's look-ahead contains this item's data.
                 _item_idx = -1
                 for _i, _it in enumerate(items):
                     if _it.item_code == item.item_code:
@@ -1932,10 +1671,7 @@ class LineItemExtractor:
         lines: List[str],
         item_indices: List[int],
     ) -> List[ItemEntity]:
-        """
-        Fill missing data from sibling items (same product family).
-        E.g., HD-SLD-3D-A and HD-SLD-3D-B share the same price.
-        """
+        # Isi data yang hilang dari sibling item.
         for item in items:
             # E-WHITE: fill from sibling
             if item.item_code == 'HD-SLD-2DM-120-E-WHITE' and item.quantity is None:
@@ -1952,7 +1688,7 @@ class LineItemExtractor:
                                         item.quantity = str(calc_q)
                             except ValueError:
                                 pass
-            # ── A: item has no qty, no amount, but has unit_price → derive from sibling
+            # A: item has no qty, no amount, but has unit_price → derive from sibling
             if item.quantity is None and item.amount is None and item.unit_price:
                 # Forward lookup: get price from next item
                 try:
@@ -1970,14 +1706,13 @@ class LineItemExtractor:
                                         if other_qty > 0 and other_amt > 0:
                                             calc_qty = round(other_amt / price_f)
                                             if abs(calc_qty - other_qty) <= 1:
-                                                # Only set qty — amount should come from standalone resolution
                                                 item.quantity = str(calc_qty)
                                 except ValueError:
                                     pass
                 except ValueError:
                     pass
 
-            # ── B: item has amount but no qty → fill qty from sibling or unit_price
+            # B: item has amount but no qty → fill qty from sibling or unit_price
             if item.quantity is None and item.amount is not None:
                 try:
                     item_amt = float(str(item.amount).replace(",", ""))
@@ -2014,8 +1749,6 @@ class LineItemExtractor:
                                         except ValueError:
                                             pass
                             # B2c: same unit_price as sibling AND ratio of amounts matches ratio of qtys.
-                            # For HD-SLD items: C-WHITE (qty=5, amt=1225.76) and E-WHITE (qty=10, amt=2451.52)
-                            # share unit_price=245.15. Use the ratio of amounts to derive missing qty.
                             if item.quantity is None:
                                 for other in items:
                                     if other is item or other.quantity is None or other.unit_price is None:
@@ -2026,7 +1759,6 @@ class LineItemExtractor:
                                         other_qty_f = float(str(other.quantity).replace(",", ""))
                                         other_amt_f = float(str(other.amount).replace(",", ""))
                                         if other_up_f > 0 and other_qty_f > 0 and other_amt_f > 0:
-                                            # Check if item's unit_price (amount/derived_qty) matches other's unit_price
                                             derived_up = item_up_f / other_qty_f
                                             if abs(derived_up - other_up_f) / other_up_f < 0.05:
                                                 calc_qty = round(item_up_f / other_up_f)
@@ -2051,16 +1783,7 @@ class LineItemExtractor:
         return items
 
     def _detect_hs_codes(self, text: str) -> List[str]:
-        """
-        Detect HS codes from OCR text.
-
-        Uses positional scoring to distinguish real HS codes from:
-        - NPWP (Indonesian tax ID): 15 digits, starts with 00/01/02/...
-        - CNAPS (bank code): 8-12 digits, starts with 10, appears in footer
-        - Account numbers: 10-16 digit numbers in footer sections
-
-        Prefer codes near "HS" keyword or item descriptions over footer codes.
-        """
+        # Deteksi kode HS dari teks OCR.
         import re
         hs_pattern = re.compile(r"\b(\d{6,12})\b")
         # Score candidates by position: higher score = more likely to be real HS
@@ -2106,10 +1829,7 @@ class LineItemExtractor:
                 continue  # CNAPS: 10 digits starting with 10
             if len(code) == 9 and code.startswith("10"):
                 continue  # CNAPS variant: 9 digits starting with 10
-            # Reject numbers with >8 digits — these are almost certainly monetary amounts,
-            # not HS codes. Valid HS codes are at most 8 digits (6-digit chapter +
-            # 2-digit subheading). Rejecting them here also avoids wrong normalization
-            # (e.g., "1484273829" → "14842738" → "14842700" appearing as item HS).
+            # Reject numbers with >8 digits
             if len(code) > 8:
                 continue
             # Small bonus for 8-digit codes (full HS chapter)
@@ -2129,9 +1849,7 @@ class LineItemExtractor:
         candidates.sort(key=lambda x: -x[0])
         codes = [code for _, code in candidates]
 
-        # ── Pass 2: Product-keyword HS overrides ─────────────────────
-        # When no valid HS code found or detected code is likely wrong (NPWP/CNAPS),
-        # use keyword-based HS. Common in CIs where HS column is not rendered.
+        # Pass 2: Product-keyword HS overrides
         KEYWORD_HS_OVERRIDES = [
             (r"\btextile\s*c[o0]rd\b", "59022020"),
             (r"\btextile\s*(?:cord|fabric|woven|knitted|synthetic)", "59039000"),
@@ -2140,7 +1858,6 @@ class LineItemExtractor:
             (r"\b(?:tyre|tire)\b|\brubber\s*(?:tire|tyre)", "40111000"),
             (r"\brubber\s*cord\b", "59039000"),
             # Furniture item codes: DTGYG-HB, HD-SLD, TB180, DQ180, CZ180, MM-120, WH-ZEDAG, WH-SDSAG, etc.
-            # These are office/filing cabinet codes → HS 94031000
             (r"\b(DTGYG|HD-S?LD|TB\d{3}|DQ\d{3}|CZ\d{3}|MM-\d{3}|WH-[A-Z]{2,}[A-Z0-9-]*)", "94031000"),
         ]
         for pattern, hs_code in KEYWORD_HS_OVERRIDES:
@@ -2154,7 +1871,7 @@ class LineItemExtractor:
 
     @staticmethod
     def _normalize_hs(hs_code: Optional[str]) -> Optional[str]:
-        """Normalize HS code to 8-digit format."""
+        # Normalisasi kode HS ke format 8 digit.
         if not hs_code:
             return None
         import re
@@ -2168,15 +1885,7 @@ class LineItemExtractor:
         lines: List[str],
         item_line_indices: List[int],
     ) -> Dict[str, str]:
-        """
-        Extract per-item HS codes by scanning the text near each item code line.
-
-        HD-SLD CIs often have HS codes listed in a header table like:
-            HS : 94031000  94032000  94033000  ...
-        Or per-item in the table rows.
-
-        Returns a dict mapping item_code → hs_code.
-        """
+        # Ekstrak kode HS per item.
         import re
         per_item: Dict[str, str] = {}
 
@@ -2206,7 +1915,7 @@ class LineItemExtractor:
 
             for w_idx in range(window_start, window_end):
                 if w_idx == idx:
-                    continue  # Skip the item code line itself
+                    continue  # Skip baris kode item
                 w_line = lines[w_idx]
                 for m in hs_re.finditer(w_line):
                     code = m.group(1)
@@ -2229,7 +1938,6 @@ class LineItemExtractor:
             if len(found_hs) == 1:
                 per_item[norm_code] = found_hs[0]
             # If multiple HS codes found, assign based on position
-            # (HS before item code → earlier items; HS after → later items)
             elif len(found_hs) > 1:
                 # Try to associate by proximity
                 before = [h for h in found_hs if h not in per_item.values()]
@@ -2239,10 +1947,10 @@ class LineItemExtractor:
         return per_item
 
     def extract_pattern_entities(self, text: str) -> Dict[str, List[PatternEntity]]:
-        """Extract structured entities using regex patterns + port name lookup."""
+        # Ekstrak entity terstruktur dengan regex.
         entities: Dict[str, List[PatternEntity]] = {}
 
-        # ── 1. Regex-based entity extraction ───────────────────────────────
+        # 1. Regex-based entity extraction
         for entity_type, patterns in ENTITY_PATTERNS.items():
             seen: set = set()
             for pattern in patterns:
@@ -2268,9 +1976,8 @@ class LineItemExtractor:
                     ))
                     break  # Take first matching pattern only
 
-        # ── 2. Port name lookup (handles multi-line OCR layout) ─────────────
+        # 2. Port name lookup (handles multi-line OCR layout)
         # Uses the PORT_TO_LOCODE lookup table from lookups.py.
-        # OCR often puts the port name on a separate line from the label.
         try:
             from .lookups import get_port_locode
             text_upper = text.upper()
@@ -2326,7 +2033,7 @@ class LineItemExtractor:
         except ImportError:
             pass  # lookups.py not available
 
-        # ── 3. Currency lookup for textile/rubber CIs where currency appears as "USD/KG" ──
+        # 3. Currency lookup for textile/rubber CIs where currency appears as "USD/KG" ----
         # If no valid currency found, check for "USD/KG" pattern and extract "USD"
         if "currency" not in entities:
             text_upper = text.upper()
@@ -2350,7 +2057,7 @@ class LineItemExtractor:
         return entities
 
     def _is_garbage_value(self, value: str, entity_type: str) -> bool:
-        """Return True if the value looks like OCR noise."""
+        # Cek apakah nilai adalah noise OCR.
         if not value:
             return True
         # Contains newlines or excessive whitespace
@@ -2384,11 +2091,7 @@ class LineItemExtractor:
         return False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# PL WEIGHT EXTRACTOR
 # Extracts NETTO/BRUTO per item from Packing List text.
-# ═══════════════════════════════════════════════════════════════════════════
-
 _PL_NON_ITEM = re.compile(
     r"^(C/I|CO\.|LTD|INC|LLC|CORP|NO|NPWP|KODE|TELP|PACKING"
     r"|ID|HENAN|PRODUCTS|SHIPPER|CONSIGNEE|PERGUDANGAN"
@@ -2401,7 +2104,7 @@ _PL_NON_ITEM = re.compile(
 
 
 def _is_real_pl_item_code(code: str) -> bool:
-    """Check if a string looks like a real PL item code."""
+    # Check if a string looks like a real PL item code.
     if not code or len(code) < 4:
         return False
     if _PL_NON_ITEM.match(code):
@@ -2417,21 +2120,9 @@ def _is_real_pl_item_code(code: str) -> bool:
 
 
 class PLWeightExtractor:
-    """
-    Extracts net/gross weight per item code from Packing List text.
-
-    Weight extraction strategy:
-      1. Find item code lines
-      2. Collect 3-5 digit integers from that line and continuation lines
-      3. Largest value = GROSS, second-largest = NETTO
-      4. Normalize OCR-corrupted codes (ID→HD, WHITH→WHITE)
-
-    Returns:
-        Dict mapping normalized item_code → {net_weight, gross_weight}
-    """
-
+    # Ekstrak berat netto/brutto per kode item dari PL.
     def extract_weights(self, text: str) -> Dict[str, Dict[str, str]]:
-        """Extract weight data per item code from PL text."""
+        # Ekstrak data berat dari PL.
         if not text:
             return {}
 
@@ -2456,7 +2147,7 @@ class PLWeightExtractor:
             code = item_code_re.match(lines[i].strip()).group(1)
             code = normalize_item_code(code)
 
-            # Collect weight values from this line + continuation
+            # Kumpulkan nilai berat from this line + continuation
             vals = self._get_weight_values(lines[i])
             for offset in range(1, 6):
                 next_i = i + offset
@@ -2469,7 +2160,7 @@ class PLWeightExtractor:
                 if extra:
                     vals.extend(extra)
 
-            # Last occurrence: backward scan for misplaced weights
+            # Scan backward untuk berat salah letak for misplaced weights
             is_last = (item_idx == len(item_lines) - 1 or
                        item_lines[item_idx + 1] != i + 1)
             if is_last and len(vals) < 2:
@@ -2487,7 +2178,7 @@ class PLWeightExtractor:
                         vals.extend(extra)
                         break
 
-            # Determine net/gross
+            # Tentukan net/gross
             uniq = sorted(set(vals), reverse=True)
             if len(uniq) >= 2:
                 gross = uniq[0]
@@ -2498,7 +2189,7 @@ class PLWeightExtractor:
                     weight_accumulators[code]["nets"].append(net)
                     weight_accumulators[code]["grosses"].append(gross)
 
-        # Finalize: for duplicate codes, use last occurrence
+        # Finalize: untuk kode duplikat, use last occurrence
         for code, data in weight_accumulators.items():
             if len(data["nets"]) == 1:
                 weights[code] = {
@@ -2515,7 +2206,7 @@ class PLWeightExtractor:
         return weights
 
     def _get_weight_values(self, line: str) -> List[int]:
-        """Extract 3-5 digit integers from a line (potential weights)."""
+        # Ekstrak nilai berat dari baris.
         result = []
         for m in re.finditer(r"(?:(?<=^)|(?<=\s))(\d{3,5})(?!\d)", line):
             val = int(m.group(1))
@@ -2528,24 +2219,12 @@ class PLWeightExtractor:
         return result
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# PL MERGER
 # Merges PL weight data into CI items.
-# ═══════════════════════════════════════════════════════════════════════════
-
 class PLMerger:
-    """
-    Merges Packing List weight data into Commercial Invoice items.
-
-    This is a critical step: CI often doesn't include per-item weights.
-    PL provides NETTO/BRUTO per item. This merger:
-      1. Extracts weights from PL using PLWeightExtractor
-      2. Normalizes item codes for matching (ID→HD, WHITH→WHITE)
-      3. Merges into CI ItemEntity list
-    """
+    # Merger data berat PL ke item CI.
 
     def merge(self, ci_items: List[ItemEntity], pl_text: str) -> List[ItemEntity]:
-        """Merge PL weights into CI items. Returns updated item list."""
+        # Merger berat PL ke item CI.
         if not pl_text or not ci_items:
             return ci_items
 

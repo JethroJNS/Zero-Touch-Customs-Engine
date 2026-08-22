@@ -1,8 +1,3 @@
-"""
-CEISA 4.0 API Client.
-
-Provides high-level methods for submitting documents and checking status.
-"""
 import logging
 from typing import Any, Dict, Optional
 import httpx
@@ -15,7 +10,7 @@ logger = logging.getLogger("ceisa")
 
 
 class CeisaAPIError(Exception):
-    """Raised when CEISA API returns an error."""
+    # Exception saat CEISA API returns error.
 
     def __init__(self, status: str, message: Any, response_data: Optional[Dict] = None):
         self.status = status
@@ -25,8 +20,6 @@ class CeisaAPIError(Exception):
 
 
 class CeisaSubmissionResult:
-    """Result of a CEISA document submission."""
-
     def __init__(
         self,
         success: bool,
@@ -37,7 +30,7 @@ class CeisaSubmissionResult:
         document_json: Optional[Dict] = None,
     ):
         self.success = success
-        self.id_header = id_header  # UUID from CEISA on success
+        self.id_header = id_header
         self.status = status
         self.message = message
         self.raw_response = raw_response or {}
@@ -54,26 +47,6 @@ class CeisaSubmissionResult:
 
 
 class CeisaClient:
-    """
-    High-level CEISA 4.0 API client.
-
-    Usage:
-        client = CeisaClient()
-
-        # Submit a document
-        result = await client.submit_document(
-            entities=shipment_entities,
-            shipment_id="CD-ABC12345",
-        )
-
-        # Check submission status
-        status = await client.get_status(result.id_header)
-
-    Environment:
-        Set CEISA_ENV=prod for production.
-        Set CEISA_USERNAME and CEISA_PASSWORD in .env.
-    """
-
     def __init__(self):
         self.cfg = config
         self._mapper = CeisaMapper()
@@ -88,7 +61,7 @@ class CeisaClient:
     async def __aexit__(self, *args):
         await self.close()
 
-    # ── Document Submission ─────────────────────────────────────────────────
+    # Document Submission
 
     async def submit_document(
         self,
@@ -96,21 +69,6 @@ class CeisaClient:
         shipment_id: Optional[str] = None,
         document_override: Optional[Dict] = None,
     ) -> CeisaSubmissionResult:
-        """
-        Submit a PIB/PEB document to CEISA API.
-
-        Args:
-            entities: ShipmentEntities from the OCR extraction engine.
-            shipment_id: Optional reference for logging.
-            document_override: Optional CEISA JSON dict (bypasses mapper).
-
-        Returns:
-            CeisaSubmissionResult with id_header on success.
-
-        Raises:
-            CeisaAPIError: If API returns non-OK status.
-            httpx.HTTPStatusError: On network errors.
-        """
         if not self.cfg.is_configured:
             return CeisaSubmissionResult(
                 success=False,
@@ -140,7 +98,7 @@ class CeisaClient:
             raise
 
     async def _send_document(self, doc_json: Dict) -> CeisaSubmissionResult:
-        """Send the document JSON to CEISA API."""
+        # Kirim document JSON ke CEISA API.
         auth = await get_auth()
         headers = await auth.get_auth_header()
         headers["Content-Type"] = "application/json"
@@ -152,7 +110,7 @@ class CeisaClient:
             headers=headers,
         )
 
-        # Handle non-2xx as error
+        # Handle non-2xx sebagai error
         if response.status_code >= 400:
             try:
                 error_body = response.json()
@@ -181,7 +139,7 @@ class CeisaClient:
                 document_json=doc_json,
             )
         else:
-            # Parse error messages from validation failures
+            # Parse error messages dari validation failures
             logger.warning(f"CEISA submission returned: {status} — {message}")
             return CeisaSubmissionResult(
                 success=False,
@@ -192,18 +150,9 @@ class CeisaClient:
                 document_json=doc_json,
             )
 
-    # ── Status Check ────────────────────────────────────────────────────────
+    # Status Check
 
     async def get_status(self, id_header: str) -> Dict[str, Any]:
-        """
-        Get the status of a submitted document.
-
-        Args:
-            id_header: The UUID returned from submit_document().
-
-        Returns:
-            Status response dict from CEISA API.
-        """
         if not id_header:
             raise ValueError("id_header is required")
 
@@ -218,15 +167,10 @@ class CeisaClient:
 
         return response.json()
 
-    # ── Validation ──────────────────────────────────────────────────────────
+    # Validation
 
     async def validate_document(self, entities) -> CeisaSubmissionResult:
-        """
-        Validate a document (without actually submitting).
-
-        Same as submit_document but intended for pre-submission checks.
-        Returns result without persisting to CEISA.
-        """
+        # Validasi dokumen tanpa submit.
         doc_json = self._mapper.map_document(entities)
         logger.info(f"CEISA validate: nomorAju={doc_json.get('nomorAju', 'N/A')}")
 
@@ -238,12 +182,7 @@ class CeisaClient:
             logger.error(f"CEISA validation failed: {exc}")
             raise
 
-    # ── Builder ──────────────────────────────────────────────────────────────
+    # Builder
 
     def build_document(self, entities) -> Dict[str, Any]:
-        """
-        Build the CEISA JSON document without sending.
-
-        Useful for preview before actual submission.
-        """
         return self._mapper.map_document(entities)

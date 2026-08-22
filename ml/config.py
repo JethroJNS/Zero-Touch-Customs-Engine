@@ -1,39 +1,20 @@
-"""
-Hybrid NER Extractor for Zero-Touch Customs Engine.
-
-Combines the best of both approaches:
-  - LayoutXLM: Layout-aware ML extraction for header entities (parties, vessels, ports)
-  - Pattern:   Rule-based extraction for line items (codes, quantities, amounts)
-
-Extraction strategy (see hybrid_engine.py for details):
-  Layer 1 (LayoutXLM): Invoice/BL numbers, dates, party names, vessel, ports
-  Layer 2 (Pattern):   Item codes, HS, qty, prices, amounts, dimensions
-  Layer 3 (Merger):    Cross-validation, confidence scoring, CEISA mapping
-"""
-
 from pathlib import Path
 
-# ── Project root ──────────────────────────────────────────
+# PROJECT ROOT
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 DATASET_DIR = PROJECT_ROOT / "dataset"
 MODEL_DIR = PROJECT_ROOT / "models"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
-# ── Document types ────────────────────────────────────────
+# DOCUMENT TYPES
 DOC_TYPE_CI = "CI"
 DOC_TYPE_PL = "PL"
 DOC_TYPE_BL = "BL"
 DOC_TYPES = [DOC_TYPE_CI, DOC_TYPE_PL, DOC_TYPE_BL]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# ENTITY TYPE DEFINITIONS
-# Maps NER output to CEISA schema fields.
-# Each entry defines: what the NER model extracts → where it goes in Excel.
-# ═══════════════════════════════════════════════════════════════════════════
-
 class NERLabel(str):
-    """A NER label that maps to CEISA entity."""
+    # NER label untuk CEISA entity.
     def __new__(cls, value, ceisa_sheet=None, ceisa_col=None, description=""):
         inst = super().__new__(cls, value)
         inst.ceisa_sheet = ceisa_sheet
@@ -42,7 +23,7 @@ class NERLabel(str):
         return inst
 
 
-# ── CI Entity Types (Commercial Invoice) ──────────────────
+# CI ENTITY TYPES
 CI_ENTITIES = [
     # Header
     "invoice_number",
@@ -55,7 +36,6 @@ CI_ENTITIES = [
     "incoterms",
     "country_of_origin",
     "country_of_destination",
-    # Line items
     "item_description",
     "item_code",
     "item_quantity",
@@ -64,7 +44,6 @@ CI_ENTITIES = [
     "item_amount",
     "item_hs_code",
     "item_dimensions",
-    # Totals
     "total_amount",
     "total_quantity",
     "total_net_weight",
@@ -72,13 +51,12 @@ CI_ENTITIES = [
     "payment_terms",
     "port_of_loading",
     "port_of_discharge",
-    # Related docs
     "bl_number",
     "container_number",
     "seal_number",
 ]
 
-# ── PL Entity Types (Packing List) ────────────────────────
+# PL ENTITY TYPES
 PL_ENTITIES = [
     "item_code",
     "item_description",
@@ -95,7 +73,7 @@ PL_ENTITIES = [
     "total_cbm",
 ]
 
-# ── BL Entity Types (Bill of Lading) ──────────────────────
+# BL ENTITY TYPES
 BL_ENTITIES = [
     "bl_number",
     "bl_date",
@@ -126,13 +104,8 @@ BL_ENTITIES = [
 ALL_ENTITIES = list(set(CI_ENTITIES + PL_ENTITIES + BL_ENTITIES))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # CEISA SCHEMA MAPPING
-# Maps raw entity names → Excel sheet / column for CEISA export.
-# ═══════════════════════════════════════════════════════════════════════════
-
 ENTITY_TO_EXCEL: dict = {
-    # ── HEADER sheet ──────────────────────────────────────────
     "NOMOR AJU":                    {"sheet": "HEADER",        "col": "NOMOR AJU"},
     "KODE VALUTA":                  {"sheet": "HEADER",        "col": "KODE VALUTA"},
     "KODE INCOTERM":                {"sheet": "HEADER",        "col": "KODE INCOTERM"},
@@ -155,7 +128,6 @@ ENTITY_TO_EXCEL: dict = {
     "KODE GUNA BARANG":             {"sheet": "HEADER",        "col": "KODE GUNA BARANG"},
     "KODE ASAL BARANG":             {"sheet": "HEADER",        "col": "KODE ASAL BARANG"},
 
-    # ── ENTITAS sheet ─────────────────────────────────────────
     "SELLER/NAMA ENTITAS":          {"sheet": "ENTITAS",      "col": "NAMA ENTITAS"},
     "SELLER/ALAMAT ENTITAS":        {"sheet": "ENTITAS",      "col": "ALAMAT ENTITAS"},
     "SELLER/KODE NEGARA":           {"sheet": "ENTITAS",      "col": "KODE NEGARA"},
@@ -172,30 +144,25 @@ ENTITY_TO_EXCEL: dict = {
     "NOTIFY/ALAMAT ENTITAS":        {"sheet": "ENTITAS",      "col": "ALAMAT ENTITAS"},
     "NOTIFY/KODE NEGARA":           {"sheet": "ENTITAS",      "col": "KODE NEGARA"},
 
-    # ── DOKUMEN sheet ────────────────────────────────────────
     "NOMOR DOKUMEN CI":             {"sheet": "DOKUMEN",      "col": "NOMOR DOKUMEN"},
     "TANGGAL DOKUMEN CI":           {"sheet": "DOKUMEN",      "col": "TANGGAL DOKUMEN"},
     "NOMOR DOKUMEN BL":             {"sheet": "DOKUMEN",      "col": "NOMOR DOKUMEN"},
     "TANGGAL DOKUMEN BL":           {"sheet": "DOKUMEN",      "col": "TANGGAL DOKUMEN"},
 
-    # ── PENGANGKUT sheet ─────────────────────────────────────
     "NAMA PENGANGKUT":              {"sheet": "PENGANGKUT",   "col": "NAMA PENGANGKUT"},
     "NOMOR PENGANGKUT":             {"sheet": "PENGANGKUT",   "col": "NOMOR PENGANGKUT"},
     "KODE BENDERA":                 {"sheet": "PENGANGKUT",   "col": "KODE BENDERA"},
     "VESSEL NAME":                  {"sheet": "PENGANGKUT",   "col": "NAMA PENGANGKUT"},
     "VOYAGE NUMBER":                {"sheet": "PENGANGKUT",   "col": "NOMOR PENGANGKUT"},
 
-    # ── KEMASAN sheet ────────────────────────────────────────
     "JUMLAH KEMASAN":               {"sheet": "KEMASAN",      "col": "JUMLAH KEMASAN"},
     "KODE KEMASAN":                 {"sheet": "KEMASAN",      "col": "KODE KEMASAN"},
     "TOTAL CARTONS":                {"sheet": "KEMASAN",      "col": "JUMLAH KEMASAN"},
 
-    # ── KONTAINER sheet ──────────────────────────────────────
     "NOMOR KONTINER":               {"sheet": "KONTAINER",    "col": "NOMOR KONTINER"},
     "CONTAINER NUMBER":             {"sheet": "KONTAINER",    "col": "NOMOR KONTINER"},
     "SEAL NUMBER":                  {"sheet": "KONTAINER",    "col": "NOMOR SEGEL"},
 
-    # ── BARANG sheet ─────────────────────────────────────────
     "HS":                           {"sheet": "BARANG",        "col": "HS"},
     "KODE BARANG":                  {"sheet": "BARANG",        "col": "KODE BARANG"},
     "URAIAN":                       {"sheet": "BARANG",        "col": "URAIAN"},
@@ -213,7 +180,6 @@ ENTITY_TO_EXCEL: dict = {
     "FOB_ITEM":                     {"sheet": "BARANG",        "col": "FOB"},
     "HARGA SATUAN":                 {"sheet": "BARANG",        "col": "HARGA SATUAN"},
 
-    # ── KOMPONENBIAYA sheet ───────────────────────────────────
     "HARGA INVOICE":                {"sheet": "KOMPONENBIAYA","col": "HARGA INVOICE"},
     "BIAYA TRANSPORTASI":           {"sheet": "KOMPONENBIAYA","col": "BIAYA TRANSPORTASI"},
     "ASURANSI_ITEM":                {"sheet": "KOMPONENBIAYA","col": "ASURANSI"},
@@ -221,11 +187,7 @@ ENTITY_TO_EXCEL: dict = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # EXCEL COLUMN DEFINITIONS
-# Standard column order per sheet (matches CEISA 4.0 ground truth).
-# ═══════════════════════════════════════════════════════════════════════════
-
 EXCEL_COLUMNS: dict = {
     "HEADER": [
         "NOMOR AJU", "KODE DOKUMEN", "KODE KANTOR", "KODE KANTOR BONGKAR",
@@ -317,10 +279,7 @@ EXCEL_SHEET_ORDER = [
     "PUNGUTAN", "JAMINAN", "BANKDEVISA", "VERSI", "RESPON",
 ]
 
-# CEISA 4.0 Excel column definitions per sheet.
-# Only sheets with actual extracted data have column lists here.
-# Other sheets (BARANGTARIF, BARANGDOKUMEN, etc.) are created by the exporter
-# but left mostly empty as they don't apply to this use case.
+# CEISA 4.0 Excel column definitions.
 EXCEL_COLUMNS: dict = {
     "HEADER": [
         "NOMOR AJU", "KODE KANTOR", "KODE DOKUMEN", "KODE JENIS IMPOR",
@@ -376,7 +335,7 @@ EXCEL_COLUMNS: dict = {
     ],
     "VERSI": ["VERSION"],
     "RESPON": ["NOMOR AJU", "TIMESTAMP", "KODE RESPON", "DESKRIPSI"],
-    # Additional CEISA sheets (populated as applicable)
+
     "BARANGTARIF": ["NOMOR AJU", "SERI BARANG", "KODE TARIF", "TARIF BEBAS", "TARIF BEBAS BMJ"],
     "BARANGDOKUMEN": ["NOMOR AJU", "SERI BARANG", "SERI DOKUMEN", "KODE DOKUMEN"],
     "BARANGENTITAS": ["NOMOR AJU", "SERI BARANG", "SERI ENTITAS", "KODE ENTITAS"],
@@ -390,26 +349,22 @@ EXCEL_COLUMNS: dict = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # POSTPROCESSING CONFIG
-# Lookup tables for normalization.
-# ═══════════════════════════════════════════════════════════════════════════
-
 POSTPROC_CONFIG: dict = {
-    # Date formats to try (in order of specificity)
+    # Format tanggal
     "date_formats": [
         "%d %b %Y", "%d %B %Y", "%d/%m/%Y", "%d-%m-%Y",
         "%Y-%m-%d", "%d.%m.%Y", "%b %d, %Y", "%Y%m%d",
     ],
     "default_date_format": "%Y-%m-%d",
 
-    # Currency codes
+    # Kode mata uang
     "currency_codes": ["USD", "CNY", "EUR", "GBP", "JPY", "SGD", "IDR", "AUD", "KRW"],
 
-    # Incoterms
+    # Kode incoterms
     "incoterms_codes": ["FOB", "CIF", "CFR", "EXW", "DAP", "DDP", "FCA", "CPT", "CIP", "FAS", "DAT"],
 
-    # Port codes (name → UN/LOCODE)
+    # Kode pelabuhan (nama -> LOCODE)
     "port_codes": {
         "SHANGHAI": "CNSHA", "NINGBO": "CNNBO", "YANTIAN": "CNYTN",
         "GUANGZHOU": "CNCAN", "HONGKONG": "HKHKG", "SINGAPORE": "SGSIN",
@@ -421,7 +376,7 @@ POSTPROC_CONFIG: dict = {
         "CIKARANG": "IDCGK",
     },
 
-    # Country codes (name → ISO 2-letter)
+    # Kode negara (nama -> ISO 2-letter)
     "country_codes": {
         "CHINA": "CN", "INDONESIA": "ID", "SINGAPORE": "SG",
         "MALAYSIA": "MY", "THAILAND": "TH", "JAPAN": "JP",
@@ -430,7 +385,7 @@ POSTPROC_CONFIG: dict = {
         "GERMANY": "DE", "UNITED KINGDOM": "GB", "AUSTRALIA": "AU",
     },
 
-    # Unit codes (name → customs code)
+    # Kode satuan (nama -> kode bea cukai)
     "unit_codes": {
         "PCS": "PCE", "PC": "PCE", "PIECES": "PCE", "PIECE": "PCE",
         "SET": "SET", "SETS": "SET",
@@ -441,7 +396,7 @@ POSTPROC_CONFIG: dict = {
         "PK": "PK", "PACK": "PK", "PACKAGE": "PK",
     },
 
-    # Packaging codes
+    # Kode kemasan
     "packaging_codes": {
         "CTN": "CT", "CARTON": "CT", "CARTONS": "CT",
         "PK": "PK", "PACKAGE": "PK", "PALLET": "PLT",
@@ -449,7 +404,7 @@ POSTPROC_CONFIG: dict = {
         "BAG": "BG", "BARREL": "BR", "BOX": "BX",
     },
 
-    # Vessel flag codes
+    # Kode bendera kapal
     "vessel_flag_codes": {
         "SG": "SG", "SINGAPORE": "SG",
         "HK": "HK", "HONG KONG": "HK",
@@ -463,87 +418,60 @@ POSTPROC_CONFIG: dict = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # HYBRID EXTRACTION CONFIG
-# Controls which extractor handles which entity category.
-# ═══════════════════════════════════════════════════════════════════════════
-
 class ExtractionStrategy:
     """
-    Defines which extraction layer handles each entity category.
-
-    Strategy rationale:
-      LAYOUT (LayoutXLM) — best for entities that require spatial/visual
-        context: party names, addresses, vessel names, port names, dates.
-        The model's layout awareness (bounding boxes, spatial positions)
-        helps distinguish header information from table data.
-
-      PATTERN (Rule-based) — best for entities with strict, predictable
-        formats: item codes, HS codes, numeric values. The rule-based
-        approach is more accurate for table-structured data where OCR
-        artifacts (ID→1D, H↔E confusion) are common.
+    Definisikan layer mana yang menangani entity category mana.
+    LAYOUT: party names, addresses, vessel names, ports, dates.
+    PATTERN: item codes, HS codes, numeric values.
     """
 
-    # Entity categories handled by LayoutXLM (layout-aware ML)
+    # Entity untuk LayoutXLM
     LAYOUT_ENTITIES = {
-        # Document identifiers
         "invoice_number", "invoice_date",
         "bl_number", "bl_date", "issue_date",
-        # Parties (names & addresses — benefit from spatial context)
         "seller_name", "seller_address",
         "buyer_name", "buyer_address",
         "shipper_name", "shipper_address",
         "consignee_name", "consignee_address",
         "notify_party_name", "notify_party_address",
-        # Transportation (free-form, spatially distinct)
         "vessel_name", "voyage_number",
         "port_of_loading", "port_of_discharge",
         "place_of_receipt", "place_of_delivery",
-        # Financial (context-dependent, benefit from surrounding text)
         "currency", "incoterms",
         "freight_term",
-        # Origin/destination (often near header)
         "country_of_origin", "country_of_destination",
-        # Description (free-form text)
         "description_of_goods",
-        # Packaging
         "kind_of_packages",
     }
 
-    # Entity categories handled by Pattern (rule-based tabular)
+    # Entity untuk Pattern
     PATTERN_ENTITIES = {
-        # Line items (strict format, table-structured)
         "item_code", "item_description",
         "item_quantity", "item_unit",
         "item_unit_price", "item_amount",
         "item_hs_code", "item_dimensions",
-        # Aggregates (sum of items)
         "total_amount", "total_quantity",
         "total_net_weight", "total_gross_weight",
-        # PL-specific
         "number_of_cartons", "cbm",
         "net_weight_per_item", "gross_weight_per_item",
         "total_cartons", "total_cbm",
-        # Container/seal (structured format)
         "container_number", "seal_number",
         "number_of_packages",
         "measurement",
-        # Payment terms
         "payment_terms",
     }
 
     @classmethod
     def which(cls, entity_type: str) -> str:
-        """Return 'layout' or 'pattern' for a given entity type."""
         if entity_type in cls.LAYOUT_ENTITIES:
             return "layout"
         if entity_type in cls.PATTERN_ENTITIES:
             return "pattern"
-        # Unknown entity — default to pattern (more conservative)
         return "pattern"
 
 
-# ── NER Model settings ───────────────────────────────────
+# NER MODEL SETTINGS
 NER_CONFIG: dict = {
     "layoutxlm_model": "microsoft/layoutxlm-base",
     "gliner_model": "urchade/gliner_multi_v2.1",
@@ -555,7 +483,7 @@ NER_CONFIG: dict = {
     "confidence_threshold": 0.0,
 }
 
-# ── Training settings ──────────────────────────────────────
+# TRAINING SETTINGS
 TRAIN_CONFIG: dict = {
     "epochs": 20,
     "batch_size": 8,
@@ -568,7 +496,7 @@ TRAIN_CONFIG: dict = {
     "gradient_accumulation_steps": 2,
 }
 
-# ── OCR settings ──────────────────────────────────────────
+# OCR SETTINGS
 OCR_CONFIG: dict = {
     "use_angle_cls": True,
     "lang": "en",
@@ -576,6 +504,6 @@ OCR_CONFIG: dict = {
     "det_db_box_thresh": 0.5,
     "det_db_unclip_ratio": 1.6,
     "rec_batch_num": 16,
-    "use_gpu": False,   # Hybrid uses CPU OCR to avoid GPU contention with NER
+    "use_gpu": False,   # OCR CPU untuk hindari GPU contention
     "show_log": False,
 }

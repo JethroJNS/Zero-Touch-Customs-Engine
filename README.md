@@ -1,151 +1,122 @@
 # Zero-Touch Customs Engine
 
-A web-based OCR extraction system for Indonesian customs documents (CEISA 4.0). Upload Commercial Invoice, Packing List, and Bill of Lading files to automatically extract entities and generate declaration packages.
+Aplikasi web untuk mengekstrak data dari dokumen customs Indonesia (CEISA 4.0). Unggah dokumen Commercial Invoice, Packing List, dan Bill of Lading untuk otomatis mengekstrak entitas dan menghasilkan paket declaration Excel.
 
-## Quick Start
+## Cara Menjalankan
 
 ```bash
-# Build and start the application
+# Build dan jalankan aplikasi
 docker compose up --build
 
-# Open in browser
+# Buka di browser
 open http://localhost:8000
 ```
 
-## Features
+## Fitur
 
-- **Smart Upload**: Upload CI, PL, and/or BL files (PDF, PNG, JPG, JPEG, TIFF)
-- **Hybrid Extraction**: Combines ML (LayoutLMv3) + Pattern-based extraction
-- **CEISA 4.0 Export**: Produces complete Excel declaration package
-- **Declarations Management**: Save, view, send, and delete shipment records
-- **CPU-Only**: No GPU required for inference
+- **Smart Upload**: Unggah dokumen CI, PL, dan/atau BL (PDF, PNG, JPG, JPEG, TIFF)
+- **Ekstraksi Hybrid**: Kombinasi ML (LayoutLMv3) + Pattern-based extraction
+- **Ekspor CEISA 4.0**: Menghasilkan paket declaration Excel lengkap
+- **Kelola Declarations**: Simpan, lihat, kirim, dan hapus record shipment
+- **CPU-Only**: Tidak memerlukan GPU untuk inferensi
 
-## Project Structure
+## Struktur Proyek
 
 ```
-website/
-├── src/                       # FastAPI application
-│   ├── main.py               # FastAPI backend
-│   ├── smart_upload.html     # Smart Upload page
-│   ├── declarations.html     # Declarations management page
-│   └── static/               # Frontend assets
-│       ├── style.css         # UI styles
-│       └── images/
-├── ml/                        # ML inference engine
-│   ├── config.py            # Configuration
-│   ├── src/
-│   │   ├── ocr/            # PaddleOCR wrapper
-│   │   ├── extraction/     # Entity extraction (HybridExtractor, Layout, Pattern)
-│   │   ├── excel/          # CEISA 4.0 Excel exporter
-│   │   └── postprocessing/ # Text normalization
-│   └── models/
-│       └── layoutlmv3-v4/
-│           └── best_model/  # Model weights (481MB)
-├── .env                       # Environment configuration
-├── download_model.py         # Model download utility
-├── Dockerfile
-├── docker-compose.yml
-└── requirements.txt
-
-training/                     # Model training code (separate repository)
-├── training/                 # Training scripts (finetune_v4.py, etc.)
-├── dataset/                 # Training dataset
-├── train.jsonl             # Training data
-├── val.jsonl               # Validation data
-└── label_map_v2.json      # Entity labels
+src/
+├── main.py                  # Entry point FastAPI
+├── templates/                # Halaman HTML
+│   ├── dashboard.html       # Halaman dashboard
+│   ├── smart_upload.html   # Halaman upload dokumen
+│   ├── declarations.html   # Kelola declarations
+│   └── activity.html       # Log aktivitas
+├── static/                  # Aset frontend
+│   ├── style.css
+│   └── images/
+├── models/                  # Model database (SQLAlchemy)
+├── routes/                  # Route API
+├── services/                # Seed data
+├── ceisa/                   # Integrasi CEISA 4.0
+ml/
+├── config.py               # Konfigurasi ML
+├── src/
+│   ├── ocr/               # PaddleOCR wrapper
+│   ├── extraction/         # Ekstraksi entitas (HybridExtractor, Layout, Pattern)
+│   ├── excel/             # Ekspor Excel CEISA 4.0
+│   └── postprocessing/    # Normalisasi teks
+└── models/
+    └── layoutlmv3-v4/
+        └── best_model/    # Bobot model (481MB)
+.env                      # Konfigurasi environment
+Dockerfile
+docker-compose.yml
+requirements.txt
 ```
 
-## ML Model
+## Model ML
 
-The LayoutLMv3 model (481MB) is included in this repository. For larger deployments or version control, you can:
+Model LayoutLMv3 (481MB) belum termasuk di repository ini. Train model dengan command berikut:
 
-### Option 1: Download during Docker build
 ```bash
-docker build --build-arg MODEL_REPO=your-username/layoutlmv3-v4 .
+python train.py --config ml/config.py --output ml/models/layoutlmv3-v4
 ```
 
-### Option 2: Download manually
-```bash
-pip install huggingface_hub
-python download_model.py --huggingface-repo your-username/layoutlmv3-v4
-```
-
-### Option 3: Use text-based fallback (no model needed)
-The application works without the model using text-based regex extraction (lower accuracy).
-
-**To upload your trained model to HuggingFace:**
-```bash
-huggingface-cli login
-# From your training environment:
-from huggingface_hub import create_repo, upload_folder
-create_repo("your-username/layoutlmv3-v4")
-upload_folder(folder_path="best_model", repo_id="your-username/layoutlmv3-v4")
-```
-
-## Architecture
+## Arsitektur
 
 ```
-Browser → FastAPI → HybridExtractor → ExcelExporter → Excel Download
-            (src/)        (ml/)
-                           │
-                           ├── OCR (PaddleOCR)
-                           ├── LayoutXLM (LayoutLMv3) ── fallback ──► Pattern-based
-                           └── Merger → CEISA Excel
+Browser → FastAPI → HybridExtractor → ExcelExporter → Download Excel
+             (src/)      (ml/)
+                          │
+                          ├── OCR (PaddleOCR)
+                          ├── LayoutXLM (LayoutLMv3) ── fallback ──► Pattern-based
+                          └── Merger → CEISA Excel
 ```
 
 ## Requirements
 
 - Docker & Docker Compose
-- ~2 GB disk space (base) + ~500MB (with model)
-- 4+ GB RAM recommended
+- ~2 GB disk (base) + ~500MB (dengan model)
+- RAM 4+ GB direkomendasikan
 
-## API Endpoints
+## Endpoint API
 
 ### `POST /api/extract`
-Upload documents and get extraction results.
+Unggah dokumen dan dapat hasil ekstraksi.
 
-**Form fields:** `ci`, `pl`, `bl` (at least one required)
+**Form fields:** `ci`, `pl`, `bl` (minimal satu diperlukan)
 
 ### `POST /api/shipments`
-Save extraction results to database.
+Simpan hasil ekstraksi ke database.
 
 ### `GET /api/shipments`
-List all saved shipments.
+Daftar semua shipment.
 
 ### `GET /api/shipments/{id}`
-Get shipment details.
+Detail shipment.
 
 ### `POST /api/shipments/{id}/send`
-Mark shipment as sent.
+Tandai shipment sebagai terkirim.
 
 ### `DELETE /api/shipments/{id}`
-Delete a shipment.
+Hapus shipment.
 
-## Environment Variables
+## Variabel Environment
 
-Copy `.env.example` to `.env` and configure:
+Salin `.env` dari template dan konfigurasi:
 
-```bash
-cp .env.example .env
-```
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@db:5432/ocr_engine` |
-| `POSTGRES_DB` | Database name | `ocr_engine` |
-| `POSTGRES_USER` | Database user | `postgres` |
-| `POSTGRES_PASSWORD` | Database password | `postgres` |
-| `MODEL_PATH` | Path to LayoutLMv3 model | `ml/models/layoutlmv3-v4/best_model` |
-| `APP_PORT` | Application port | `8000` |
+| Variabel | Deskripsi | Default |
+|----------|------------|---------|
+| `DATABASE_URL` | Koneksi PostgreSQL | `postgresql://postgres:postgres@db:5432/ocr_engine` |
+| `POSTGRES_DB` | Nama database | `ocr_engine` |
+| `POSTGRES_USER` | User database | `postgres` |
+| `POSTGRES_PASSWORD` | Password database | `postgres` |
+| `MODEL_PATH` | Path model LayoutLMv3 | `ml/models/layoutlmv3-v4/best_model` |
+| `APP_PORT` | Port aplikasi | `8000` |
 
 ## Development
 
 ```bash
-# Run without Docker (requires Python 3.11+)
+# Jalankan tanpa Docker (Python 3.11+)
 pip install -r requirements.txt
 cd src && python main.py
-
-# Train new model (requires training/ directory)
-cd ../training
-python -m training.finetune_v4
 ```

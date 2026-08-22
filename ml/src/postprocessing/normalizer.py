@@ -1,20 +1,3 @@
-"""
-Entity Normalizer — Standardizes dates, numbers, codes, etc.
-
-Handles:
-  - Dates: various formats → ISO YYYY-MM-DD
-  - Numbers: handles commas, dots, whitespace
-  - Currencies: maps to standard codes
-  - Countries: maps to ISO 2-letter codes
-  - Ports: maps to UN/LOCODE
-  - Incoterms: standardizes to uppercase
-  - Units: maps to customs unit codes
-  - Packaging: maps to package type codes
-  - HS codes: validates 6-10 digit format
-
-Adapted from Pattern/src/postprocessing/normalizer.py with additions.
-"""
-
 from __future__ import annotations
 
 import re
@@ -41,10 +24,7 @@ class NormalizedValue:
 
 
 class EntityNormalizer:
-    """
-    Normalizes entity values to standard formats for CEISA export.
-    """
-
+    # Normalizes entity values to standard formats for CEISA export.
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or POSTPROC_CONFIG
         self._date_formats = self.config.get("date_formats", [])
@@ -57,10 +37,7 @@ class EntityNormalizer:
         self._packaging_codes = self.config.get("packaging_codes", {})
         self._vessel_flag_codes = self.config.get("vessel_flag_codes", {})
 
-    # ── Date normalization ─────────────────────────────────
-
     def normalize_date(self, value: str) -> NormalizedValue:
-        """Normalize a date string to ISO format (YYYY-MM-DD)."""
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -92,7 +69,6 @@ class EntityNormalizer:
         )
 
     def _fuzzy_date_parse(self, text: str) -> Optional[str]:
-        """Parse date from text with flexible formatting."""
         text = text.strip()
 
         # DD MMM YYYY (e.g., "05 Jan 2026")
@@ -129,10 +105,7 @@ class EntityNormalizer:
         }
         return months.get(month_str.lower()[:3])
 
-    # ── Number normalization ────────────────────────────────
-
     def normalize_number(self, value: str) -> NormalizedValue:
-        """Normalize a number string (remove commas, whitespace)."""
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -161,7 +134,6 @@ class EntityNormalizer:
             )
 
     def normalize_weight(self, value: str) -> NormalizedValue:
-        """Normalize a weight value to float (kg)."""
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -179,10 +151,8 @@ class EntityNormalizer:
 
         return result
 
-    # ── Currency normalization ─────────────────────────────────
-
     def normalize_currency(self, value: str) -> NormalizedValue:
-        """Normalize currency to standard 3-letter ISO code."""
+        # Normalize currency to standard 3-letter ISO code.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -203,10 +173,8 @@ class EntityNormalizer:
             confidence=0.5, method="inferred",
         )
 
-    # ── Country normalization ─────────────────────────────────
-
     def normalize_country(self, value: str) -> NormalizedValue:
-        """Normalize country name to ISO 2-letter code."""
+        # Normalize country name to ISO 2-letter code.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -227,10 +195,8 @@ class EntityNormalizer:
             confidence=0.3, method="inferred",
         )
 
-    # ── Port normalization ─────────────────────────────────
-
     def normalize_port(self, value: str) -> NormalizedValue:
-        """Normalize port name to UN/LOCODE."""
+        # Normalize port name to UN/LOCODE.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -251,10 +217,8 @@ class EntityNormalizer:
             confidence=0.5, method="inferred",
         )
 
-    # ── Incoterms normalization ──────────────────────────────
-
     def normalize_incoterms(self, value: str) -> NormalizedValue:
-        """Normalize incoterms to standard uppercase codes."""
+        # Normalize incoterms to standard uppercase codes.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -269,10 +233,8 @@ class EntityNormalizer:
             confidence=0.5, method="inferred",
         )
 
-    # ── Unit normalization ─────────────────────────────────
-
     def normalize_unit(self, value: str) -> NormalizedValue:
-        """Normalize unit of measurement to customs code."""
+        # Normalize unit of measurement to customs code.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -287,10 +249,8 @@ class EntityNormalizer:
             confidence=0.5, method="inferred",
         )
 
-    # ── Packaging normalization ──────────────────────────────
-
     def normalize_packaging(self, value: str) -> NormalizedValue:
-        """Normalize packaging type to customs code."""
+        # Normalize packaging type to customs code.
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -305,10 +265,8 @@ class EntityNormalizer:
             confidence=0.5, method="inferred",
         )
 
-    # ── HS Code validation ─────────────────────────────────
-
     def normalize_hs_code(self, value: str) -> NormalizedValue:
-        """Validate and normalize HS code (6-10 digits)."""
+        # Validate and normalize HS code (6-10 digits).
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -342,10 +300,8 @@ class EntityNormalizer:
             confidence=0.0, method="invalid",
         )
 
-    # ── Container number validation ──────────────────────
-
     def normalize_container_number(self, value: str) -> NormalizedValue:
-        """Validate container number format (4 letters + 7 digits)."""
+        # Validate container number format (4 letters + 7 digits).
         if not value or str(value).strip() == "":
             return NormalizedValue(original=value, normalized="", confidence=0.0, method="empty")
 
@@ -362,19 +318,7 @@ class EntityNormalizer:
             confidence=0.0, method="invalid",
         )
 
-    # ── Main normalize method ──────────────────────────────
-
     def normalize(self, value: str, entity_type: str) -> NormalizedValue:
-        """
-        Automatically normalize a value based on entity type.
-
-        Args:
-            value: Raw extracted value
-            entity_type: Type of entity (matches config entity names)
-
-        Returns:
-            NormalizedValue
-        """
         if not value or str(value).strip() == "":
             return NormalizedValue(
                 original=value, normalized="",
@@ -422,15 +366,6 @@ class EntityNormalizer:
         )
 
     def normalize_entities(self, entities) -> Dict[str, Any]:
-        """
-        Normalize all entities in a ShipmentEntities object.
-
-        Args:
-            entities: ShipmentEntities instance
-
-        Returns:
-            Dictionary with all normalized entity values.
-        """
         def norm(value, entity_type):
             if value is None or str(value).strip() == "":
                 return ""

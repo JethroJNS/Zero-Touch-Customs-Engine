@@ -1,32 +1,3 @@
-"""
-LayoutXLM Extraction Layer — Header entity extraction using layout-aware ML.
-
-What this layer extracts BEST (ExtractionStrategy.LAYOUT_ENTITIES):
-  - Document identifiers (invoice number, BL number, dates)
-  - Party names and addresses (seller, buyer, shipper, consignee)
-  - Transportation entities (vessel, voyage, ports)
-  - Financial metadata (currency, incoterms, freight term)
-  - Country names, description of goods
-
-Why LayoutXLM wins here:
-  1. Bounding boxes give spatial context — party names appear in top 20% of
-     page, vessel/port in middle, table items in lower 60%.
-  2. Multilingual support (xlm-roberta backbone) — handles Chinese port names,
-     Mandarin company names, Indonesian customs labels.
-  3. Learned entity boundaries — model understands that "PT TACOMA GLOBAL
-     FURNI." is a company name without needing regex patterns.
-
-What this layer does NOT do well:
-  - Table/line-item extraction (handled by Pattern layer)
-  - Strict format validation (handled by Pattern layer)
-  - OCR error normalization (handled by validator)
-
-Architecture:
-  1. Try LayoutXLM fine-tuned model (if available)
-  2. Fall back to LayoutXLM base + MATCH scheme + RuleExtractor
-  3. If LayoutXLM unavailable → return empty (Pattern layer handles alone)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -35,30 +6,26 @@ import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple, Callable
 
-# Pre-import torch at module level to ensure DLLs are loaded before
-# any other library (e.g. PyMuPDF) might affect the DLL search path.
+
+
 if "torch" not in sys.modules:
     try:
         import torch  # noqa: F401
     except OSError:
-        pass  # torch unavailable; model will use fallback
+        pass  
 
 logger = logging.getLogger(__name__)
 
-
-# ── Entity types for LayoutXLM layer ──────────────────────────────────────
-# These map to ExtractionStrategy.LAYOUT_ENTITIES in config.py.
-# Every entry here must have a corresponding entry in LAYOUT_TO_NER_MAP.
-
+# Map ke ExtractionStrategy.LAYOUT_ENTITIES di config.py.
 @dataclass
 class LayoutEntity:
-    """A single entity extracted by the LayoutXLM layer."""
-    label: str          # Raw label from model (e.g., "NOMOR_INVOICE")
+    # Entity hasil ekstraksi LayoutXLM.
+    label: str          # Label dari model
     value: str
     confidence: float
     bbox: Tuple[float, float, float, float] = (0, 0, 0, 0)
     page: int = 0
-    source: str = "layoutxlm"  # distinguishes from Pattern entities
+    source: str = "layoutxlm"  
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -71,13 +38,8 @@ class LayoutEntity:
         }
 
 
-# ── Mapping: LayoutXLM labels → normalized entity names ──────────────────
-# LayoutXLM uses CEISA-style labels (NOMOR_INVOICE, NAMA_EKSPORTER, etc.)
-# This map converts them to the canonical entity names used by Hybrid.
-
+# PEMETAAN LABEL
 LAYOUT_TO_NER_MAP: Dict[str, str] = {
-    # Direct mapping: model label → normalized entity name
-    # (Trained LayoutLMv3 uses B-invoice_number, I-seller_name, etc.)
     "invoice_number": "invoice_number",
     "invoice_date":   "invoice_date",
     "bl_number":     "bl_number",
@@ -121,10 +83,7 @@ LAYOUT_TO_NER_MAP: Dict[str, str] = {
 }
 
 
-# ── Text-based fallback extractor ────────────────────────────────────────────
-# Used when LayoutXLM model is not available.
-# Extracts layout entities using regex + spatial heuristics.
-
+# FALLBACK TEXT-BASED
 _INVOICE_NUMBER_RE = re.compile(
     r"(?:INV(?:OICE)?\.?|Invoice\s*(?:No\.?|Number|#)\s*[:\s]*)([A-Z0-9][\-A-Z0-9/]{3,40})",
     re.IGNORECASE,
@@ -167,22 +126,11 @@ _BUYER_RE = re.compile(
 )
 _BUYER_PT_RE = re.compile(r"(PT\s+[A-Z][A-Z\s]{3,50}(?:CO\.?|LTD\.?|INC\.?)?\.?)")
 
-# ── BL Party extraction patterns ───────────────────────────────────────────
-# Extracts shipper, consignee, and notify-party from Bill of Lading text.
-# BL document structure (OCR may vary order):
-#   - Shipper: appears near the top (before "Consignee" / "BILL OF LADING")
-#   - Consignee: appears near "Consignee" label
-#   - Notify Party: appears near "Notify" / "NON-NEGOTIABLE" label
-
-# Known good company suffixes (OCR-robust)
+# PATTERN PARTY BL
+# Akhiran perusahaan valid
 _BL_COMPANY_SUFFIX = r"(?:CO\.?|LTD\.?|INC\.?|LLC|PTE|CORP|CORPORATION|MANUFACTURING)"
 
-# Multi-word company: captures e.g. "KUMHO PETROCHEMICAL CO.,LTD."
-# Non-possessive greedy: backtracks when suffix absent
-# Uses [ \t] instead of \s to avoid matching newlines.
-# Negative lookbehind (?<! AS\b) prevents "SAME AS CONSIGNEE" from matching —
-# the "CO" at the end of "CONSIGNEE" and "LIMITED" in "CONSIGNEE.LIMITED"
-# would otherwise match the CO\.|LIMITED suffix, producing a false company name.
+# Multi-word company
 _BL_COMPANY_MULTI_RE = re.compile(
     r"\b([A-Z][A-Z][A-Za-z \t]{1,50}?(?<! AS\b)(?:"
     r"CORPORATION|LIMITED|LTD\.?|INC\.?|CO\.?|LLC|MANUFACTURING)"
@@ -190,16 +138,12 @@ _BL_COMPANY_MULTI_RE = re.compile(
     re.IGNORECASE,
 )
 
-# PT company pattern (Indonesian entities)
-# Non-possessive greedy: backtracks when suffix absent
-# Handles: PT. HANKOOK TIRE INDONESIA, PT. F1 LOGIX INDONESIA
-# Includes digits for "F1 LOGIX" type names
+# Pattern perusahaan PT
 _BL_PT_RE = re.compile(
     r"(PT\.?[ \t]+[A-Za-z0-9][A-Za-z0-9 \t]{2,50}(?:CO\.?,?[ \t]*LTD\.?|CO\.?|LTD\.?|INC\.?)?)"
 )
 
-# Indonesian/Korean address indicators (OCR-robust: handles "100-230KOREA" pattern)
-# Uses negative lookbehind to handle digits touching country names
+# Indikator alamat Indonesia/Korea
 _BL_ASIA_ADDR_RE = re.compile(
     r"(?:JL\.?|KENARI|RAYA|BLOK|G3|CIKARANG|DELTA|SILICON|CICU|"
     r"HARYONO|KAV\.?|PANCORAN|JAKARTA|BEKASI|INDONESIA|"
@@ -220,18 +164,7 @@ _BL_CONSIGNEE_LABEL_RE = re.compile(
 
 
 class LayoutExtractor:
-    """
-    LayoutXLM-based header entity extractor.
-
-    Provides a clean interface to LayoutXLM for the Hybrid extractor.
-    Gracefully falls back to text-based rules when the model is unavailable.
-
-    Usage:
-        extractor = LayoutExtractor()
-        entities = extractor.extract(ocr_result, doc_type="CI")
-        # Returns Dict[str, List[LayoutEntity]]
-    """
-
+    # LayoutXLM-based header entity extractor.
     def __init__(
         self,
         model_path: Optional[str] = None,
@@ -248,11 +181,11 @@ class LayoutExtractor:
 
     @property
     def available(self) -> bool:
-        """True if LayoutXLM model is available."""
+        # True if LayoutXLM model is available.
         return self._model_loaded
 
     def _try_load_model(self) -> bool:
-        """Attempt to load the trained LayoutLMv3 model. Returns True on success."""
+        # Attempt to load the trained LayoutLMv3 model. Returns True on success.
         if self._model_loaded:
             return True
 
@@ -264,7 +197,6 @@ class LayoutExtractor:
 
             device = "cuda" if (self.use_gpu and torch.cuda.is_available()) else "cpu"
 
-            # Determine model path: use provided path, environment variable, or default
             if self.model_path:
                 model_dir = Path(self.model_path)
             else:
@@ -287,12 +219,11 @@ class LayoutExtractor:
             self._tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
             self._model = AutoModelForTokenClassification.from_pretrained(str(model_dir))
 
-            # Load label map from model directory (model.saved with model)
+            # Load label map dari model directory (model.saved dengan model)
             label_map_path = model_dir / "label_map.json"
             if label_map_path.exists():
                 with open(label_map_path) as f:
                     raw_map = json.load(f)
-                # Convert string keys to int keys
                 self._id_to_label = {int(k): v for k, v in raw_map["id_to_label"].items()}
                 self._label_to_id = raw_map["label_to_id"]
             else:
@@ -322,16 +253,7 @@ class LayoutExtractor:
         ocr_result,
         doc_type: str = "CI",
     ) -> Dict[str, List[LayoutEntity]]:
-        """
-        Extract layout-aware entities from OCR results.
-
-        Args:
-            ocr_result: OCRResult from OCREngine
-            doc_type: "CI", "PL", or "BL"
-
-        Returns:
-            Dict mapping normalized entity name → list of LayoutEntity
-        """
+        # Extract layout-aware entities from OCR results.
         if not self._model_loaded:
             self._try_load_model()
 
@@ -345,9 +267,7 @@ class LayoutExtractor:
         ocr_result,
         doc_type: str,
     ) -> Dict[str, List[LayoutEntity]]:
-        """Extract using trained LayoutLMv3 model."""
-
-        # Build page-level word groups
+        # Extract using trained LayoutLMv3 model.
         all_items = []
         for page in ocr_result.pages:
             for item in page.words:
@@ -371,10 +291,7 @@ class LayoutExtractor:
             page_entities = self._extract_page_model(items, page_num, doc_type)
             all_entities.extend(page_entities)
 
-        # ── BL party post-processing ─────────────────────────────────
-        # LayoutXLM model often mis-tags parties in BL documents
-        # (e.g., tagging KUMHO as seller_name instead of shipper_name).
-        # Supplement with pattern-based extraction.
+        # BL party post-processing
         if doc_type == "BL" and all_entities:
             bl_party_labels: set = set()
             text = ocr_result.full_text
@@ -396,29 +313,26 @@ class LayoutExtractor:
                 seen.add(key)
                 deduped.append(e)
 
-        # ── Supplement missing party fields with text-based fallback ──────────────
-        # When LayoutXLM doesn't extract seller/buyer/consignee from a CI document,
-        # text patterns can still find them. Override low-confidence or label-like
-        # entities (e.g., "Shipper/Exporter" from model misclassification).
+        # Supplement missing party fields dengan text-based fallback
         extracted_labels: Dict[str, float] = {e.label: e.confidence for e in deduped}
         text = ocr_result.full_text
 
         def add_supplement(label: str, value: str, confidence: float):
             existing_conf = extracted_labels.get(label, 0.0)
-            # Check if existing entity looks like a label (not a real company name)
+            # Cek jika entity yang ada terlihat seperti label
             existing_is_label = False
             for ex_val, ex_conf in [(e.value, e.confidence) for e in deduped if e.label == label]:
-                # Label-like: contains "/" (e.g., "Shipper/Exporter"), or all-caps+slash+punc
+                # Label-like: contains "/"
                 if "/" in ex_val or re.match(r"^[A-Z][A-Za-z\s/]+$", ex_val):
                     existing_is_label = True
                     break
-            # Add if: no existing, OR existing is label-like, OR existing conf <= supplement conf
+            # Add jika: tidak ada, OR existing label-like, OR existing conf <= supplement conf
             if value and len(value.strip()) >= 3 and (
                 existing_conf < 0.01
                 or existing_is_label
                 or confidence >= existing_conf
             ):
-                # If replacing existing entities (label-like or low conf), remove them first
+                # Jika replace existing entities (label-like atau low conf), remove dulu
                 if existing_conf >= 0.01:
                     deduped[:] = [e for e in deduped if e.label != label]
                 deduped.append(LayoutEntity(
@@ -429,25 +343,23 @@ class LayoutExtractor:
                 ))
                 extracted_labels[label] = confidence
 
-        # Seller from CI: look for first line that looks like a company name
+        # Seller dari CI: cari baris pertama yang terlihat seperti nama perusahaan
         if doc_type == "CI" and extracted_labels.get("seller_name", 0.0) < 0.70:
             lines = text.split("\n")
-            for i, line in enumerate(lines[:8]):  # Check first 8 lines
+            for i, line in enumerate(lines[:8]):
                 line = line.strip()
-                # Skip short lines, labels, metadata, addresses
                 if len(line) < 8:
                     continue
-                if re.match(r"^[A-Z][A-Z\s/]{0,20}:", line):  # "Shipper/Exporter:" type labels
+                if re.match(r"^[A-Z][A-Z\s/]{0,20}:", line):
                     continue
                 if any(k in line.upper() for k in ["INVOICE", "DATE", "NO.:", "NUMBER", "AND", "FOR"]):
                     continue
-                if re.match(r"^\d", line):  # Starts with number (address number, etc.)
+                if re.match(r"^\d", line):
                     continue
-                if any(k in line.upper() for k in ["JL.", "JL ", "ROAD", "STREET", "FLOOR", "TOWER", "BLOK"]):  # Address parts
+                if any(k in line.upper() for k in ["JL.", "JL ", "ROAD", "STREET", "FLOOR", "TOWER", "BLOK"]):
                     continue
-                if "/" in line and not line.endswith(".CO") and not line.endswith(".LTD") and not line.endswith(".INC"):  # Likely a label like "Shipper/Exporter" (but not a filename or company suffix)
+                if "/" in line and not line.endswith(".CO") and not line.endswith(".LTD") and not line.endswith(".INC"):
                     continue
-                # Strip trailing date if present (e.g., "KUMHO... 2026-06-16")
                 cleaned = re.sub(r"\s+\d{4}[-/]\d{2}[-/]\d{2}\s*$", "", line).strip()
                 if len(cleaned) >= 8:
                     add_supplement("seller_name", cleaned, 0.65)
@@ -455,7 +367,6 @@ class LayoutExtractor:
 
         # Buyer from CI: look for "BUYER:" or "IMPORTER:" label
         if doc_type == "CI" and extracted_labels.get("buyer_name", 0.0) < 0.70:
-            # Stop at keywords that mark the end of the buyer field
             buyer_pattern = re.compile(
                 r"(?:BUYER|IMPORTER|CONSIGNEE|PEMBELI)[:\s]+([A-Z][A-Z\s.,\-']{3,60}?)"
                 r"(?=\s*(?:INVOICE|DATE|JL\.|TEL|FAX|TAX|ADDRESS|NO\.|KS\.|,INDUSTRIAL|,BLOK|\n|$))",
@@ -467,35 +378,27 @@ class LayoutExtractor:
                     add_supplement("buyer_name", name, 0.75)
                     break
 
-        # ── PL weight supplement ───────────────────────────────────────────
-        # LayoutLMv3 model mis-predicts total_net_weight from PL text.
-        # Override by parsing the PL's TOTAL line which contains:
-        #   TOTAL <qty> <qty> <CBM> <NETTO> <BRUTO>
-        # Extract the last two numeric values as NETTO and BRUTO.
+        # PL weight supplement
         if doc_type == "PL":
             pl_text = text
-            # Find TOTAL line (may be "TOTAL", "Total", "TOTAL:", etc.)
+            # Cari TOTAL line (bisa "TOTAL", "Total", "TOTAL:", dll.)
             for line in pl_text.split('\n'):
                 stripped = line.strip()
                 if stripped.upper().startswith('TOTAL'):
                     nums = re.findall(r'[\d,]+\.?\d*', stripped)
-                    # Filter out comma-only and very small numbers (likely row counts)
                     valid_nums = []
                     for n in nums:
                         clean = n.replace(',', '')
                         try:
                             val = float(clean)
-                            if val > 100:  # weights in KG, must be > 100
+                            if val > 100:
                                 valid_nums.append(val)
                         except ValueError:
                             pass
                     if len(valid_nums) >= 2:
-                        # Last two values are NETTO and BRUTO (in that order on PL TOTAL line)
                         netto = valid_nums[-2]
                         brutto = valid_nums[-1]
-                        # Only add if they look like reasonable weights (1–500,000 kg)
                         if 100 < netto < 500000 and 100 < brutto < 500000:
-                            # Remove any model-extracted weights first
                             deduped[:] = [e for e in deduped
                                           if e.label not in ('total_net_weight', 'total_gross_weight')]
                             deduped.append(LayoutEntity(
@@ -512,14 +415,11 @@ class LayoutExtractor:
                             extracted_labels['total_gross_weight'] = 0.97
                     break
 
-        # ── BL "SAME AS CONSIGNEE" → resolve to actual consignee name ───────
-        # When the model extracts "SAME AS CONSIGNEE" as the notify_party_name,
-        # it is a reference, not an actual party name. Resolve it to the consignee.
+        # BL "SAME AS CONSIGNEE" -> resolve ke actual consignee name
         if doc_type == "BL":
             for e in deduped:
                 if e.label == "notify_party_name" and e.value.upper().startswith("SAME AS"):
                     if e.label == "notify_party_name":
-                        # Look for the consignee entity
                         for ce in deduped:
                             if ce.label == "consignee_name":
                                 e.value = ce.value
@@ -537,13 +437,13 @@ class LayoutExtractor:
         page_num: int,
         doc_type: str,
     ) -> List[LayoutEntity]:
-        """Run LayoutLMv3 inference on a single page."""
+        # Run LayoutLMv3 inference on a single page.
         import torch
 
         texts = [item["text"] for item in items]
         bboxes = [item["bbox"] for item in items]
 
-        WINDOW_SIZE = 200  # ~200 words per window
+        WINDOW_SIZE = 200
         STRIDE = 100
         entities = []
 
@@ -553,8 +453,7 @@ class LayoutExtractor:
             window_texts = texts[start:end]
             window_bboxes = bboxes[start:end]
 
-            # Split each text span into words, duplicate bbox per word.
-            # LayoutLMv3 tokenizer needs per-word input for correct token alignment.
+            # Split setiap text span jadi words, duplicate bbox per word.
             words = []
             word_bboxes = []
             for t, b in zip(window_texts, window_bboxes):
@@ -569,8 +468,7 @@ class LayoutExtractor:
                 start += STRIDE
                 continue
 
-            # Normalize bboxes to [0, 1000] (LayoutLMv3 convention)
-            # Estimate page size from max bbox values
+            # Normalize bboxes ke [0, 1000] (LayoutLMv3 convention)
             page_w = max((b[2] for b in word_bboxes), default=1)
             page_h = max((b[3] for b in word_bboxes), default=1)
             if page_w == 0: page_w = 1
@@ -610,7 +508,7 @@ class LayoutExtractor:
             probs = torch.softmax(logits, dim=-1)
             preds = torch.argmax(logits, dim=-1)
 
-            # Convert predictions → entities
+            # Convert predictions -> entities
             page_entities = self._preds_to_entities(
                 preds[0], probs[0], encoding,
                 words, word_bboxes, page_num,
@@ -629,11 +527,7 @@ class LayoutExtractor:
         bboxes: List,
         page_num: int,
     ) -> List[LayoutEntity]:
-        """
-        Convert LayoutLMv3 fine-tuned predictions to LayoutEntity objects.
-        The model uses real entity labels (B-invoice_number, I-seller_name, etc.)
-        so we strip the B-/I- prefix and use them directly.
-        """
+        # Convert LayoutLMv3 fine-tuned predictions to LayoutEntity objects.
         id2label = self._id_to_label
         entities = []
         word_ids = encoding.word_ids(batch_index=0)
@@ -649,11 +543,7 @@ class LayoutExtractor:
             if word_idx is None:
                 continue  # Skip special tokens (CLS, SEP, PAD)
 
-            # Skip duplicate predictions for the same original word.
-            # LayoutLMv3 tokenizes a single OCR word into multiple subword tokens
-            # (e.g. "TACOMA" → "TA", "##COM", "##A"). All subword tokens map to
-            # the same word_idx. Without this guard, the model produces a B- tag for
-            # each subword, generating N duplicate entities for one word.
+            # Skip duplicate predictions untuk word original yang sama.
             if word_idx == current_word_idx:
                 continue
 
@@ -692,7 +582,7 @@ class LayoutExtractor:
                             page=page_num,
                         ))
 
-                entity_name = label[2:]  # Strip "B-" prefix
+                entity_name = label[2:]
                 current_label = entity_name
                 current_value_parts = [texts[word_idx]] if word_idx < len(texts) else []
                 current_bbox = bboxes[word_idx] if word_idx < len(bboxes) else (0, 0, 0, 0)
@@ -700,13 +590,13 @@ class LayoutExtractor:
                 current_word_idx = word_idx
 
             elif label.startswith("I-") and current_label:
-                entity_name = label[2:]  # Strip "I-" prefix
+                entity_name = label[2:]
                 if entity_name == current_label:
                     if word_idx < len(texts):
                         current_value_parts.append(texts[word_idx])
                     current_conf = max(current_conf, confidence)
                     current_word_idx = word_idx
-                # If I- label doesn't match current B-, flush and start new
+                # Jika I- label tidak match B- yang aktif, flush dan mulai baru
                 else:
                     if current_value_parts:
                         value = " ".join(current_value_parts).strip()
@@ -736,10 +626,7 @@ class LayoutExtractor:
                     page=page_num,
                 ))
 
-        # ── Post-process: deduplicate and clean entity list ─────────────────────
-        # When LayoutXLM produces multiple entity objects for the same logical text
-        # (e.g., same company name appears in CI header AND BL text), keep only
-        # the highest-confidence occurrence per unique value.
+        # Post-process: deduplicate and clean entity list
         entities = self._deduplicate_entities(entities)
 
         return entities
@@ -748,18 +635,12 @@ class LayoutExtractor:
         self,
         entities: List[LayoutEntity],
     ) -> List[LayoutEntity]:
-        """
-        Three-pass cleaning for LayoutXLM token-per-word outputs:
-        1. Merge same-label entities sharing the SAME bbox → full multi-word names
-           (OCR sometimes returns "PT TACOMA GLOBAL" as one word; LayoutXLM
-           tokenizes it into separate sub-word entities all sharing one bbox.)
-        2. Merge consecutive same-label fragments on the SAME line (y within 10px)
-           into a full name (for entities tagged word-by-word).
-        3. Deduplicate by (label, value) keeping highest confidence.
-        """
-        # ── Pass 1: merge by shared bbox ─────────────────────────────────────────
-        # Key: (label, bbox_tuple). When multiple values share the same bbox,
-        # concatenate them (sorted by x-coordinate).
+        # Three-pass cleaning for LayoutXLM token-per-word outputs:
+        # 1. Merge same-label entities sharing the SAME bbox → full multi-word names
+        # 2. Merge consecutive same-label fragments on the SAME line (y within 10px) into a full name (for entities tagged word-by-word).
+        # 3. Deduplicate by (label, value) keeping highest confidence.
+        
+        # Pass 1: merge by shared bbox
         bbox_groups: Dict[Tuple[str, Tuple], List[LayoutEntity]] = {}
         for e in entities:
             key = (e.label, tuple(round(x) for x in e.bbox))
@@ -789,8 +670,7 @@ class LayoutExtractor:
                     page=first.page,
                 ))
 
-        # ── Pass 2: merge consecutive same-label entities on same line ────────────
-        # Sort by (page, bbox_y, bbox_x)
+        # Pass 2: merge consecutive same-label entities on same line
         sorted_ents = sorted(by_bbox, key=lambda e: (e.page or 0, round(e.bbox[1]), e.bbox[0]))
 
         merged2: List[LayoutEntity] = []
@@ -803,7 +683,7 @@ class LayoutExtractor:
                 next_e = sorted_ents[j]
                 if next_e.label != e.label:
                     break
-                # Same label: check if on same page and within 10px vertically
+                # Same label: cek jika di page yang sama dan dalam 10px vertically
                 if (next_e.page or 0) != (e.page or 0):
                     break
                 if abs(next_e.bbox[1] - e.bbox[1]) > 10:
@@ -830,7 +710,7 @@ class LayoutExtractor:
                 ))
             i = j
 
-        # ── Pass 3: deduplicate by (label, value) ────────────────────────────────
+        # Pass 3: deduplicate by (label, value)
         seen: Dict[Tuple[str, str], LayoutEntity] = {}
         for e in merged2:
             key = (e.label, e.value)
@@ -843,19 +723,13 @@ class LayoutExtractor:
         value: str,
         doc_type: str,
     ) -> Optional[Tuple[str, str, float]]:
-        """
-        Classify a MATCH entity into a specific type using rules.
-        Mirrors LayoutXLM's RuleExtractor._classify_match_entity().
-
-        Returns (normalized_label, value, confidence) or None.
-        """
+        # Classify a MATCH entity into a specific type using rules.
         import re
 
         value = value.strip()
         if not value or len(value) < 2:
             return None
 
-        # ── Date patterns ───────────────────────────────────────────────
         date_iso = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', value)
         if date_iso:
             if doc_type in ("CI", "PL"):
@@ -874,7 +748,7 @@ class LayoutExtractor:
             return ("invoice_date" if doc_type in ("CI", "PL") else "bl_date",
                     value, 0.85)
 
-        # ── HS Code (8+ digits, valid chapter) ──────────────────────────
+        # HS Code (8+ digits, valid chapter)
         hs = value.replace(".", "").replace(",", "").replace(" ", "")
         if re.match(r'^\d{8,10}$', hs):
             try:
@@ -884,35 +758,35 @@ class LayoutExtractor:
             except ValueError:
                 pass
 
-        # ── Container (4 letters + 7 digits) ───────────────────────────
+        # Container (4 letters + 7 digits)
         if re.match(r'^[A-Z]{4}\d{7}$', value):
             return "container_number", value, 0.98
 
-        # ── BL Number ───────────────────────────────────────────────────
+        # BL Number
         if re.match(r'^[A-Z]{4}\d{7,12}$', value):
             return "bl_number", value, 0.95
 
-        # ── Invoice Number ─────────────────────────────────────────────
+        # Invoice Number
         if doc_type in ("CI", "PL"):
             if re.match(r'^(INV|INV\.|INVOICE|FACTUR)?[\s\-:]*[A-Z0-9]{4,}$', value, re.IGNORECASE):
                 return "invoice_number", value, 0.90
 
-        # ── Currency ─────────────────────────────────────────────────
+        # Currency
         currency = re.search(r'\b(USD|EUR|GBP|IDR|JPY|CNY|SGD|THB|MYR|HKD|KRW|TWD)\b', value, re.IGNORECASE)
         if currency:
             return "currency", currency.group().upper(), 0.98
 
-        # ── Incoterms ─────────────────────────────────────────────────
+        # Incoterms
         incoterms = re.search(r'\b(FOB|CIF|CFR|EXW|DAP|DDP|FCA|CPT|CIP|FAS|DAT)\b', value, re.IGNORECASE)
         if incoterms:
             return "incoterms", incoterms.group().upper(), 0.98
 
-        # ── Vessel name ────────────────────────────────────────────────
+        # Vessel name
         vessel_clean = re.sub(r'^(VESSEL\s*NAME\s*:?\s*)', '', value, flags=re.IGNORECASE).strip()
         if vessel_clean and not vessel_clean[0].isdigit() and len(vessel_clean) > 2:
             return "vessel_name", vessel_clean, 0.85
 
-        # ── Country ───────────────────────────────────────────────────
+        # Country
         country = re.search(
             r'\b(CHINA|INDONESIA|SINGAPORE|MALAYSIA|THAILAND|JAPAN|KOREA|HONG\s*KONG|'
             r'TAIWAN|VIETNAM|INDIA|USA|GERMANY|UK|AUSTRALIA)\b',
@@ -921,12 +795,12 @@ class LayoutExtractor:
         if country:
             return "country_of_origin", country.group().upper(), 0.95
 
-        # ── Port names ────────────────────────────────────────────────
+        # Port names
         port_match = re.match(r'^([A-Z][A-Z\s]{2,25}(?:,?\s*[A-Z]{2,10})?)$', value)
         if port_match and len(value) > 3 and not value[0].isdigit():
             return "port_of_loading", value.strip(), 0.75
 
-        # ── Company names (multi-word, capitalized) ────────────────────
+        # Company names (multi-word, capitalized)
         if (len(value) > 5 and not value[0].isdigit()
                 and not re.search(r'\d{4,}', value)
                 and re.search(r'[A-Z]{3,}', value)
@@ -942,10 +816,7 @@ class LayoutExtractor:
         ocr_result,
         doc_type: str,
     ) -> Dict[str, List[LayoutEntity]]:
-        """
-        Text-based fallback when LayoutXLM model is unavailable.
-        Uses regex patterns for layout entities.
-        """
+        # Text-based fallback when LayoutXLM model is unavailable.
         text = ocr_result.full_text
         if not text:
             return {}
@@ -962,66 +833,64 @@ class LayoutExtractor:
                     source="layout_fallback",
                 ))
 
-        # ── Invoice Number ─────────────────────────────────────────────
+        # Invoice Number
         for m in _INVOICE_NUMBER_RE.finditer(text):
             add("invoice_number", m.group(1), 0.80)
 
-        # ── BL Number ─────────────────────────────────────────────────
+        # BL Number
         for m in _BL_NUMBER_RE.finditer(text):
             add("bl_number", m.group(1), 0.85)
 
-        # ── Dates ────────────────────────────────────────────────────
+        # Dates
         for m in _DATE_RE.finditer(text):
             add("invoice_date" if doc_type in ("CI", "PL") else "bl_date",
                 m.group(1), 0.80)
 
-        # ── Container Numbers ─────────────────────────────────────────
+        # Container Numbers
         for m in _CONTAINER_RE.finditer(text):
             add("container_number", m.group(1), 0.98)
 
-        # ── Seal Numbers ──────────────────────────────────────────────
+        # Seal Numbers
         for m in _SEAL_RE.finditer(text):
             add("seal_number", m.group(1), 0.85)
 
-        # ── Vessel Name ───────────────────────────────────────────────
+        # Vessel Name
         for m in _VESSEL_RE.finditer(text):
             add("vessel_name", m.group(1), 0.80)
 
-        # ── Ports ────────────────────────────────────────────────────
+        # Ports
         for m in _PORT_RE.finditer(text):
             add("port_of_loading", m.group(1), 0.75)
 
-        # ── Currency ─────────────────────────────────────────────────
+        # Currency
         for m in _CURRENCY_RE.finditer(text):
             add("currency", m.group(1), 0.95)
 
-        # ── Incoterms ──────────────────────────────────────────────
+        # Incoterms
         for m in _INCOTERMS_RE.finditer(text):
             add("incoterms", m.group(1), 0.95)
 
-        # ── Countries ───────────────────────────────────────────────
+        # Countries
         for m in _COUNTRY_RE.finditer(text):
             add("country_of_origin", m.group(1), 0.90)
 
-        # ── Seller / Exporter ─────────────────────────────────────────
-        # Filter out product description noise (e.g., "TEXTILE CO", "QUANTITY ... CO")
+        # Seller / Exporter
         _SELLER_NOISE = {"QUANTITY", "UNIT", "PRICE", "DESCRIPTION", "TEXTILE", "CORD",
                          "PRODUCT", "NUMBER", "CODE", "MATERIAL", "LOT", "DATE", "NAME"}
         for m in _SELLER_RE.finditer(text):
             v = m.group(1).strip()
             v_words = set(w.upper() for w in re.split(r"[\s,\.\-]+", v))
-            # Reject if too short, contains product keywords, or mostly capital letters
+            # Reject jika terlalu pendek, contain product keywords, atau mostly capital letters
             if len(v) < 10:
                 continue
             if v_words & _SELLER_NOISE:
                 continue
-            # Reject if no lowercase letters (likely all-caps document structure)
+            # Reject jika tidak ada lowercase letters (kemungkinan document structure)
             if not any(c.islower() for c in v):
                 continue
             add("seller_name", v, 0.70)
 
-        # ── Buyer / Importer ─────────────────────────────────────────
-        # Stop buyer extraction at document structure keywords
+        # Buyer / Importer
         _BUYER_RE = re.compile(
             r"(?:Buyer|Consignee|Importer)[:\s]+([A-Z][A-Z\s.,\-']{3,50}?)(?=\s+(?:Invoice|No\.|DATE|TEL|FAX|JL\.|EMAIL|$))",
             re.IGNORECASE,
@@ -1031,7 +900,7 @@ class LayoutExtractor:
         for m in _BUYER_PT_RE.finditer(text):
             add("buyer_name", m.group(1).strip(), 0.80)
 
-        # ── BL-specific party extraction ─────────────────────────────
+        # BL-specific party extraction ─────────────────────────────
         bl_party_labels: set = set()  # Track what we've added
         if doc_type == "BL":
             self._extract_bl_parties(text, add, bl_party_labels)
@@ -1053,27 +922,15 @@ class LayoutExtractor:
         add: Callable,
         seen_labels: set,
     ) -> None:
-        """
-        Extract shipper, consignee, and notify-party from BL text.
-
-        Strategy:
-          1. Shipper: Look in the first ~600 chars of text for company names
-                     (skip OCR noise like "Shippe")
-          2. Consignee: Find "CONSIG" keyword, extract PT. company after it
-          3. Notify Party: Find "NON-NEGOTIABLE" keyword, extract PT. company after it
-
-        This method supplements LayoutXLM output for cases where the model
-        mis-tags parties (e.g., tagging KUMHO as seller_name).
-        """
-        # ── 1. Shipper extraction ─────────────────────────────────────
-        # Shipper appears at the very beginning of BL text.
+        # Extract shipper, consignee, and notify-party from BL text.
+        # 1. Shipper extraction
         # Strategy:
-        #   a) Line-by-line: first real company name before "Consignee" label
-        #   b) Fallback: Thailand/Korean address lines as shipper section
+        #   a) Line-by-line: nama perusahaan nyata pertama sebelum "Consignee" label
+        #   b) Fallback: Thailand/Korean address lines sebagai shipper section
         header = text[:800]
         lines = header.split('\n')
 
-        # Find "Consignee" / "CONSIG" label position to know where header ends
+        # Cari posisi label "Consignee" / "CONSIG" untuk tahu dimana header berakhir
         consignee_pos = len(header)
         for label_m in _BL_CONSIGNEE_LABEL_RE.finditer(header):
             consignee_pos = label_m.start()
@@ -1089,7 +946,7 @@ class LayoutExtractor:
 
         for line in lines:
             if len(line) > consignee_pos:
-                break  # Past the shipper section
+                break
             line_stripped = line.strip()
             if _SKIP_LABEL_RE.search(line_stripped):
                 continue
@@ -1097,21 +954,17 @@ class LayoutExtractor:
                 name = m.group(1).strip()
                 if len(name) < 8:
                     continue
-                # Skip OCR noise
                 if name.upper().startswith("SHIPPE"):
                     continue
-                # Skip carrier companies
                 if re.search(r"(?:MERCHANT|SHIPPING|AGENCY|AS\s+CARRIER|EVERGREEN)", name, re.I):
                     continue
-                # Skip if it's mostly numbers
                 if sum(c.isalpha() for c in name) < len(name) * 0.5:
                     continue
                 add("shipper_name", name, 0.80)
                 seen_labels.add("shipper_name")
                 break
 
-        # ── 1b. Country extraction from shipper address lines ─────────────
-        # Always extract country_of_origin from the shipper's address section
+        # 1b. Country extraction from shipper address lines
         if "country_of_origin" not in seen_labels:
             # Search in lines before the consignee section
             for line in lines[:8]:
@@ -1124,39 +977,31 @@ class LayoutExtractor:
                     seen_labels.add("country_of_origin")
                     break
 
-        # ── 2. Consignee extraction ───────────────────────────────────
-        # Find "CONSIG" keyword, then look for PT. company within 300 chars after
+        # 2. Consignee extraction
+        # Cari keyword "CONSIG", lalu cari PT. company dalam 300 chars setelahnya
         if "consignee_name" not in seen_labels:
             for label_m in _BL_CONSIGNEE_LABEL_RE.finditer(text):
-                # Search 100-400 chars after the label keyword for PT. company
                 search_start = label_m.end()
                 search_window = text[search_start:search_start + 400]
                 pt_match = _BL_PT_RE.search(search_window)
                 if pt_match:
                     name = pt_match.group(1).strip()
-                    # Skip "As Carrier" type noise
                     if name.upper().startswith("AS CARRIER"):
                         continue
                     add("consignee_name", name, 0.82)
                     seen_labels.add("consignee_name")
                     break
 
-        # ── 3. Notify Party extraction ────────────────────────────────
-        # "NON-NEGOTIABLE" label → look for PT. company within 300 chars after
-        # For each NON-NEGOTIABLE match, check if the immediately following
-        # content is "SAME AS CONSIGNEE" (no actual notify party to extract).
+        # 3. Notify Party extraction
         if "notify_party_name" not in seen_labels:
             for label_m in _BL_NOTIFY_LABEL_RE.finditer(text):
                 # Only match "NON-NEGOTIABLE" (not "Par ty" alone)
                 if label_m.group(1).upper().replace("-", "").replace(" ", "") in ("NONNEGOTIABLE",):
-                    # Skip NON-NEGOTIABLE at very start of document (waybill header label)
-                    # The actual notify party section appears after "Consignee" label
                     if label_m.start() < 500:
                         continue
-                    # Search window: only look for "SAME AS" to decide if there's a party
+                    # Search window: hanya cari "SAME AS" untuk decide apakah ada party
                     search_window = text[label_m.end():label_m.end() + 300]
                     if search_window.strip().upper().startswith("SAME AS"):
-                        # No explicit notify party — this is a "same as consignee" entry
                         continue
                     # Look for PT. company in the notify section
                     pt_match = _BL_PT_RE.search(search_window)
@@ -1165,14 +1010,9 @@ class LayoutExtractor:
                         add("notify_party_name", name, 0.82)
                         seen_labels.add("notify_party_name")
                         break
-                    # NOTE: Company fallback intentionally omitted here. The 300-char
-                    # NON-NEGOTIABLE window spans page boundaries and catches shipper
-                    # names from unrelated sections. Explicit parties are captured
-                    # by the PT pattern above. Other company patterns (e.g. from a
-                    # "Notify Party" label) are handled via separate regex matches.
+                    # NOTE: Company fallback sengaja omitted di sini.
 
-        # ── 4. Shipper from Asian address pattern (fallback) ──────────
-        # If no shipper found yet, look for company + Korean/Thai address
+        # 4. Shipper from Asian address pattern (fallback)
         if "shipper_name" not in seen_labels:
             for m in _BL_COMPANY_MULTI_RE.finditer(text[:1500]):
                 name = m.group(1).strip()
@@ -1193,7 +1033,7 @@ class LayoutExtractor:
         self,
         entities: List[LayoutEntity],
     ) -> Dict[str, List[LayoutEntity]]:
-        """Group LayoutEntity list by normalized label."""
+        # Group LayoutEntity list by normalized label.
         grouped: Dict[str, List[LayoutEntity]] = {}
         for e in entities:
             # Apply LAYOUT_TO_NER_MAP
@@ -1206,7 +1046,7 @@ class LayoutExtractor:
         grouped: Dict[str, List[LayoutEntity]],
         label: str,
     ) -> Optional[LayoutEntity]:
-        """Get the highest-confidence entity for a label."""
+        # Get the highest-confidence entity for a label.
         entities = grouped.get(label, [])
         if not entities:
             return None
@@ -1217,5 +1057,5 @@ class LayoutExtractor:
         grouped: Dict[str, List[LayoutEntity]],
         label: str,
     ) -> List[str]:
-        """Get all values for a label (useful for multi-value entities)."""
+        # Get all values for a label (useful for multi-value entities).
         return [e.value for e in grouped.get(label, [])]

@@ -1,13 +1,3 @@
-"""
-ExcelExporter — Writes ShipmentEntities to CEISA 4.0 Excel format.
-
-Enhanced version with:
-  - Lookup tables from src.extraction.lookups (port→UN/LOCODE, country→ISO, etc.)
-  - Business rules from src.extraction.rules  (FOB/CIF/BM/PPN calculation)
-  - All 21 CEISA sheets present and correctly ordered
-  - Exact column order matching ground truth CEISA 4.0 Excel
-"""
-
 from __future__ import annotations
 
 import logging
@@ -28,11 +18,10 @@ from ml.src.extraction import rules as br
 
 logger = logging.getLogger(__name__)
 
-# ── Default NDPBM (Indonesian customs exchange rate) ────────
-# CNY/IDR rate — update from BI website (bi.go.id) periodically
+# NDPBM DEFAULT
 DEFAULT_NDPBM: float = 2640.37
 
-# ── Default importer details (from company registration) ────
+# IMPORTER DEFAULT
 DEFAULT_IMPORTER = {
     "name": "PT SINAR SURYA UTAMA",
     "address": "JL. RAYA CIKARANG KAV.E-12, KAWASAN INDUSTRI MM2100, CIKARANG, BEKASI, JAWA BARAT",
@@ -45,18 +34,6 @@ DEFAULT_IMPORTER = {
 
 
 class ExcelExporter:
-    """
-    Exports ShipmentEntities to CEISA 4.0-format Excel.
-
-    Guarantees:
-      - All 21 sheets present (even if empty)
-      - Column order matches ground truth exactly
-      - All columns present (empty values if not extracted)
-      - Sheet order matches CEISA 4.0 standard
-      - NOMOR AJU column filled with shipment ID
-      - FOB/CIF/BM/PPN calculated from extracted values + lookup tables
-    """
-
     def __init__(self, template_path: Optional[str | Path] = None):
         self.template_path = Path(template_path) if template_path else None
         self._ndpbm_rates: Dict[str, float] = {}  # currency → rate
@@ -67,7 +44,7 @@ class ExcelExporter:
         shipment_id: str,
         output_path: Optional[str | Path] = None,
     ) -> Path:
-        """Export entities to CEISA 4.0 Excel."""
+        # Export ke Excel CEISA 4.0.
         if output_path is None:
             output_path = Path("output") / f"{shipment_id}_ceisa.xlsx"
         output_path = Path(output_path)
@@ -82,20 +59,18 @@ class ExcelExporter:
             ws = wb.create_sheet(title=sheet_name)
             columns = EXCEL_COLUMNS.get(sheet_name, [])
 
-            # Write header row (bold)
             for col_idx, col_name in enumerate(columns, start=1):
                 cell = ws.cell(row=1, column=col_idx, value=col_name)
                 cell.font = Font(bold=True)
                 cell.fill = PatternFill("solid", fgColor="D9E1F2")
 
-            # Fill data
             self._fill_sheet(ws, entities, shipment_id, sheet_name, columns)
 
         wb.save(output_path)
         logger.info(f"CEISA Excel exported: {output_path}")
         return output_path
 
-    # ── Sheet Fillers ────────────────────────────────────────────────────────────
+    # SHEET FILLERS
 
     def _fill_sheet(
         self,
@@ -105,7 +80,7 @@ class ExcelExporter:
         sheet_name: str,
         columns: List[str],
     ) -> None:
-        """Route to the appropriate sheet filler."""
+        # Route ke sheet filler yang sesuai.
         fillers = {
             "HEADER":            self._fill_header,
             "ENTITAS":           self._fill_entitas,
@@ -123,7 +98,7 @@ class ExcelExporter:
             filler(ws, entities, shipment_id, columns)
 
     def _col(self, name: str, columns: List[str]) -> Optional[int]:
-        """Get 1-based column index by name."""
+        # Get index kolom berdasarkan nama.
         try:
             return columns.index(name) + 1
         except ValueError:
@@ -137,12 +112,12 @@ class ExcelExporter:
         value: Any,
         columns: List[str],
     ) -> None:
-        """Write value to (row, col_name) if col_name exists."""
+        # Tulis nilai ke (row, col_name).
         idx = self._col(col_name, columns)
         if idx is not None:
             ws.cell(row=row, column=idx, value=value)
 
-    # ── HEADER ────────────────────────────────────────────────────────────────
+    # HEADER
 
     def _fill_header(
         self,
@@ -151,10 +126,9 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill HEADER sheet."""
         r = 2  # Data row
 
-        # Document identity
+        # Identity dokumen
         self._set(ws, r, "NOMOR AJU", shipment_id, columns)
         self._set(ws, r, "KODE DOKUMEN", "20", columns)         # PIB declaration
         self._set(ws, r, "KODE KANTOR", DEFAULT_IMPORTER["kode_kantor"], columns)
@@ -163,7 +137,7 @@ class ExcelExporter:
         self._set(ws, r, "KODE CARA BAYAR", DEFAULT_IMPORTER["kode_cara_bayar"], columns)
         self._set(ws, r, "KODE TUTUP PU", "11", columns)
 
-        # Currency and incoterm
+        # Mata uang dan incoterm
         currency = lk.get_currency_code(entities.currency or "USD")
         self._set(ws, r, "KODE VALUTA", currency, columns)
 
@@ -171,17 +145,15 @@ class ExcelExporter:
         if incoterm:
             self._set(ws, r, "KODE INCOTERM", incoterm, columns)
 
-        # Get NDPBM rate for the currency
+        # Get NDPBM rate
         ndpbm = self._get_ndpbm(currency)
 
-        # ── Financial calculations ───────────────────────────────────────────
+        # Financial calculations
         total_raw = br.parse_amount(entities.total_amount or "")
         freight_raw = br.parse_amount(entities.freight or "")
         invoice_currency = lk.get_currency_code(entities.currency or "USD")
         cif_based = lk.is_cif_based(incoterm or "")
 
-        # For CIF/CIP/CFR/CPT incoterms: total_amount IS the CIF (invoice total).
-        # Use it directly as CIF. FOB = CIF - freight - insurance.
         # NOTE: Indonesian customs practice for CIP/CIF imports — when freight is not
         # explicitly declared in the documents (freight_raw=0), FOB in the HEADER is
         # set to 0. The total CIF is declared as-is. When freight IS explicitly
@@ -189,15 +161,13 @@ class ExcelExporter:
         if cif_based:
             cif_usd = total_raw
             insurance_usd = br.calculate_insurance(cif_usd)
-            # If freight was NOT extracted from documents, leave FOB at 0 (Indonesian
-            # customs practice). If freight WAS extracted, calculate FOB normally.
             if freight_raw > 0:
-                # Freight explicitly declared — calculate FOB from CIF breakdown
+                # Freight explicitly declared
                 fob_usd = max(0.0, cif_usd - freight_raw - insurance_usd)
             else:
                 # No freight in documents — use FOB=0 per Indonesian customs practice
                 fob_usd = 0.0
-                freight_raw = 0.0  # Also leave freight at 0 in header
+                freight_raw = 0.0
         else:
             # For FOB/EXW/FCA incoterms: total_amount IS the FOB price.
             fob_usd = total_raw
@@ -211,8 +181,6 @@ class ExcelExporter:
         self._set(ws, r, "NDPBM", ndpbm, columns)
 
         # Insurance code: 'DN' for domestic, 'LN' for overseas
-        # For CIF-based incoterms where freight=0 (Indonesian customs practice),
-        # also leave ASURANSI=0 per GT patterns
         if cif_based and freight_raw == 0.0:
             insurance_usd = 0.0
         self._set(ws, r, "KODE ASURANSI", "DN", columns)
@@ -252,7 +220,7 @@ class ExcelExporter:
         self._set(ws, r, "KODE ASAL BARANG", "1", columns)   # 1 = local content
         self._set(ws, r, "FLAG PROPORSIONAL NETTO", "T", columns)
 
-    # ── ENTITAS ───────────────────────────────────────────────────────────────
+    # ENTITAS
 
     def _fill_entitas(
         self,
@@ -261,7 +229,6 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill ENTITAS sheet with all party entities."""
         r = 2
 
         def write(
@@ -295,7 +262,6 @@ class ExcelExporter:
             r += 1
 
         # Seller / Eksportir (Seri=9, Kode=9)
-        # Use country of origin for foreign sellers (e.g. Korean exporters)
         seller_country = entities.country_of_origin or "CN"
         if entities.seller_name:
             write(
@@ -304,7 +270,7 @@ class ExcelExporter:
                 alamat=entities.seller_address,
                 negara=seller_country,
             )
-            # Manufacturer (Seri=10, Kode=10) — same as seller if unknown
+            # Manufacturer (Seri=10, Kode=10)
             write(
                 seri=10, kode=10,
                 nama=entities.seller_name,
@@ -324,10 +290,7 @@ class ExcelExporter:
                 api=DEFAULT_IMPORTER["api_type"],
             )
 
-        # Shipper (Seri=7, Kode=7)
-        # Only write if shipper differs from seller (avoid duplicate when BL shipper =
-        # seller due to fallback above). Skip if shipper == seller since the seller
-        # (KODE=9) already represents the same party at origin.
+        # Shipper (Seri=7, Kode=7), only write if shipper differs from seller
         shipper_country = entities.country_of_origin or "CN"
         if entities.shipper_name and entities.shipper_name != entities.seller_name:
             write(
@@ -338,7 +301,6 @@ class ExcelExporter:
             )
 
         # Notify Party (Seri=4, Kode=4)
-        # When BL says "SAME AS CONSIGNEE", use the consignee name as the notify party.
         notify_name = entities.notify_party_name or entities.consignee_name
         if notify_name:
             write(
@@ -349,7 +311,6 @@ class ExcelExporter:
             )
 
         # Consignee (Seri=11, Kode=11)
-        # Skip if consignee is the same party as buyer (importir) — avoids duplicate
         if entities.consignee_name and entities.consignee_name != entities.buyer_name:
             write(
                 seri=11, kode=11,
@@ -358,7 +319,7 @@ class ExcelExporter:
                 negara="ID",
             )
 
-    # ── DOKUMEN ───────────────────────────────────────────────────────────────
+    # DOKUMEN
 
     def _fill_dokumen(
         self,
@@ -367,12 +328,11 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill DOKUMEN sheet."""
         r = 2
 
         for seri, kode, nomor, tanggal in [
-            (1, "380", entities.invoice_number, entities.invoice_date),  # Invoice
-            (2, "860", entities.bl_number, entities.bl_date),              # BL
+            (1, "380", entities.invoice_number, entities.invoice_date),
+            (2, "860", entities.bl_number, entities.bl_date),
         ]:
             if not nomor:
                 continue
@@ -385,7 +345,7 @@ class ExcelExporter:
                 self._set(ws, r, "TANGGAL DOKUMEN", parsed_date, columns)
             r += 1
 
-    # ── PENGANGKUT ────────────────────────────────────────────────────────────
+    # PENGANGKUT
 
     def _fill_pengangkut(
         self,
@@ -394,19 +354,18 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill PENGANGKUT sheet."""
         if not (entities.vessel_name or entities.voyage_number):
             return
         r = 2
         self._set(ws, r, "NOMOR AJU", shipment_id, columns)
         self._set(ws, r, "SERI", "1", columns)
-        self._set(ws, r, "KODE CARA ANGKUT", "1", columns)  # Sea
+        self._set(ws, r, "KODE CARA ANGKUT", "1", columns)
         if entities.vessel_name:
             self._set(ws, r, "NAMA PENGANGKUT", entities.vessel_name.strip(), columns)
         if entities.voyage_number:
             self._set(ws, r, "NOMOR PENGANGKUT", entities.voyage_number.strip(), columns)
 
-    # ── KEMASAN ───────────────────────────────────────────────────────────────
+    # KEMASAN
 
     def _fill_kemasan(
         self,
@@ -415,7 +374,6 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill KEMASAN (packaging) sheet."""
         # Use item-level packaging if available
         pkg_type = lk.get_packaging_code(entities.packaging_type or "")
         nop = br.parse_amount(entities.number_of_packages or "")
@@ -437,7 +395,7 @@ class ExcelExporter:
         self._set(ws, r, "JUMLAH KEMASAN", nop, columns)
         self._set(ws, r, "MEREK KEMASAN", "-", columns)
 
-    # ── KONTAINER ────────────────────────────────────────────────────────────
+    # KONTAINER
 
     def _fill_kontainer(
         self,
@@ -446,7 +404,7 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill KONTAINER (container) sheet."""
+        # Fill KONTAINER (container) sheet.
         if not entities.container_numbers:
             return
 
@@ -470,7 +428,7 @@ class ExcelExporter:
             if target_row < r:
                 self._set(ws, target_row, "NOMOR SEGEL", seal.upper().strip(), columns)
 
-    # ── KOMPONENBIAYA ────────────────────────────────────────────────────────
+    # KOMPONENBIAYA
 
     def _fill_komponenbiaya(
         self,
@@ -479,7 +437,7 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill KOMPONENBIAYA (cost component) sheet."""
+        # Fill KOMPONENBIAYA (cost component) sheet.
         r = 2
 
         currency = lk.get_currency_code(entities.currency or "USD")
@@ -515,7 +473,7 @@ class ExcelExporter:
         self._set(ws, r, "CIF RUPIAH", round(cif_rupiah, 2), columns)
         self._set(ws, r, "NDPBM", ndpbm, columns)
 
-    # ── BARANG ───────────────────────────────────────────────────────────────
+    # BARANG
 
     def _fill_barang(
         self,
@@ -524,7 +482,7 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill BARANG (items) sheet with full line-item data."""
+        # Fill BARANG (items) sheet with full line-item data.
         currency = lk.get_currency_code(entities.currency or "USD")
         ndpbm = self._get_ndpbm(currency)
         negara_asal = lk.get_country_code(entities.country_of_origin or "CN")
@@ -540,7 +498,7 @@ class ExcelExporter:
             self._set(ws, r, "NOMOR AJU", shipment_id, columns)
             self._set(ws, r, "SERI BARANG", str(i), columns)
 
-            # HS code — 8 digits
+            # HS code
             hs = self._normalize_hs(item.hs_code)
             self._set(ws, r, "HS", hs, columns)
 
@@ -571,7 +529,7 @@ class ExcelExporter:
             if qty > 0:
                 self._set(ws, r, "JUMLAH SATUAN", qty, columns)
 
-            # Packaging (from item or default)
+            # Packaging
             pkg_code = lk.get_packaging_code(item.packaging or "CT")
             self._set(ws, r, "KODE KEMASAN", pkg_code, columns)
 
@@ -588,10 +546,9 @@ class ExcelExporter:
             if gw > 0:
                 self._set(ws, r, "BRUTO", round(gw, 3), columns)
 
-            # ── Financial values ────────────────────────────────────────────
+            # Financial values
             fob_item = br.parse_amount(item.amount or "0")
 
-            # Derive from qty × unit_price if amount missing
             if fob_item == 0:
                 q = br.parse_amount(item.quantity or "0")
                 p = br.parse_amount(item.unit_price or "0")
@@ -600,7 +557,7 @@ class ExcelExporter:
 
             if fob_item > 0:
                 self._set(ws, r, "FOB", round(fob_item, 2), columns)
-                self._set(ws, r, "CIF", round(fob_item, 2), columns)  # per-item CIF approximation
+                self._set(ws, r, "CIF", round(fob_item, 2), columns)
                 self._set(ws, r, "CIF RUPIAH", round(fob_item * ndpbm, 2), columns)
                 self._set(ws, r, "NDPBM", ndpbm, columns)
 
@@ -621,7 +578,7 @@ class ExcelExporter:
 
             r += 1
 
-    # ── PUNGUTAN ─────────────────────────────────────────────────────────────
+    # PUNGUTAN
 
     def _fill_pungutan(
         self,
@@ -630,7 +587,6 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill PUNGUTAN (tax levy) sheet with calculated BM and PPN."""
         currency = lk.get_currency_code(entities.currency or "USD")
         ndpbm = self._get_ndpbm(currency)
         incoterm = lk.get_incoterm_code(entities.incoterms or "")
@@ -684,7 +640,7 @@ class ExcelExporter:
         # self._set(ws, r, "KODE JENIS PUNGUTAN", "PPNBM", columns)
         # self._set(ws, r, "JUMLAH PUNGUTAN", 0.0, columns)
 
-    # ── VERSI ────────────────────────────────────────────────────────────────
+    # VERSI
 
     def _fill_versi(
         self,
@@ -693,13 +649,11 @@ class ExcelExporter:
         shipment_id: str,
         columns: List[str],
     ) -> None:
-        """Fill VERSI sheet."""
         self._set(ws, 2, "VERSION", "1.3", columns)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # Helpers
 
     def _get_ndpbm(self, currency: str) -> float:
-        """Get NDPBM rate for currency, with caching."""
         if currency in self._ndpbm_rates:
             return self._ndpbm_rates[currency]
         rate = br.get_ndpbm_rate(currency)
@@ -707,9 +661,8 @@ class ExcelExporter:
         return rate
 
     def _normalize_hs(self, hs_code: Optional[str]) -> str:
-        """Normalize HS code to 8-digit CEISA format."""
         if not hs_code:
-            return "94031000"  # furniture default
+            return "94031000"
         cleaned = re.sub(r"[^0-9]", "", str(hs_code))
         if len(cleaned) >= 6:
             return cleaned[:8].ljust(8, "0")

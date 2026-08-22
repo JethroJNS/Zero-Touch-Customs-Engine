@@ -1,7 +1,3 @@
-"""
-Shipments API routes.
-Handles CRUD operations and the OCR extraction endpoint.
-"""
 import base64
 import json
 import logging
@@ -48,11 +44,10 @@ def generate_reference_code() -> str:
     return f"CD-{uuid.uuid4().hex[:8].upper()}"
 
 
-# ── Seed Endpoints ───────────────────────────────────────────────────────────────
+# Seed Endpoints
 
 @router.post("/seed", tags=["dev"])
 async def seed_database(db: AsyncSession = Depends(get_db)):
-    """Seed the database with sample shipment records."""
     from services import seed_shipments
     from models.database import SessionLocal
     sync_db = SessionLocal()
@@ -65,7 +60,6 @@ async def seed_database(db: AsyncSession = Depends(get_db)):
 
 @router.post("/seed/activities", tags=["dev"])
 async def seed_activities(db: AsyncSession = Depends(get_db)):
-    """Seed the activities table with sample audit log records."""
     from services import seed_activities
     from models.database import SessionLocal
     sync_db = SessionLocal()
@@ -86,7 +80,6 @@ async def create_activity(
     metadata: dict = None,
     status: str = "success",
 ):
-    """Insert an activity log entry."""
     act = Activity(
         action=action.value,
         description=description,
@@ -101,7 +94,7 @@ async def create_activity(
     return act
 
 
-# ── CRUD ────────────────────────────────────────────────────────────────────────
+# CRUD
 
 @router.get("/shipments")
 async def list_shipments(
@@ -111,7 +104,6 @@ async def list_shipments(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all shipments with optional filtering and pagination."""
     query = select(Shipment)
     count_query = select(func.count(Shipment.id))
 
@@ -157,7 +149,6 @@ async def list_shipments(
 
 @router.get("/shipments/{shipment_id}")
 async def get_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
-    """Get a single shipment by ID."""
     result = await db.execute(select(Shipment).where(Shipment.id == shipment_id))
     s = result.scalar_one_or_none()
     if not s:
@@ -186,7 +177,6 @@ async def get_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/shipments/{shipment_id}/send")
 async def send_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
-    """Mark a shipment as sent."""
     result = await db.execute(select(Shipment).where(Shipment.id == shipment_id))
     s = result.scalar_one_or_none()
     if not s:
@@ -220,7 +210,6 @@ async def update_shipment_status(
     status: str = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the status of a shipment."""
     try:
         new_status = ShipmentStatus(status)
     except ValueError:
@@ -266,7 +255,6 @@ async def update_shipment_status(
 
 @router.delete("/shipments/{shipment_id}")
 async def delete_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete a shipment by ID."""
     result = await db.execute(select(Shipment).where(Shipment.id == shipment_id))
     s = result.scalar_one_or_none()
     if not s:
@@ -292,7 +280,6 @@ async def delete_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/shipments/{shipment_id}/download")
 async def download_shipment_excel(shipment_id: int, db: AsyncSession = Depends(get_db)):
-    """Download the Excel file for a shipment."""
     result = await db.execute(select(Shipment).where(Shipment.id == shipment_id))
     s = result.scalar_one_or_none()
     if not s:
@@ -323,14 +310,11 @@ async def download_shipment_excel(shipment_id: int, db: AsyncSession = Depends(g
     )
 
 
-# ── Save Extraction Result ──────────────────────────────────────────────────────
+# Save Extraction Result
 
 @router.post("/shipments")
 async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
-    """
-    Save an extraction result to the database.
-    Called when user clicks 'Save to Declarations'.
-    """
+    # Simpan hasil ekstraksi ke database.
     body = await request.json()
 
     reference_code = generate_reference_code()
@@ -396,14 +380,11 @@ async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-# ── OCR Extraction ──────────────────────────────────────────────────────────────
+# OCR Extraction
 
 @router.post("/extract")
 async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)):
-    """
-    Run the OCR + extraction pipeline on uploaded CI, PL, and BL documents.
-    Returns extraction results and Excel file WITHOUT saving to database.
-    """
+    # Jalankan pipeline OCR+ekstraksi pada dokumen CI, PL, BL.
     if not ENGINE_AVAILABLE or HybridExtractor is None:
         raise HTTPException(
             status_code=503,

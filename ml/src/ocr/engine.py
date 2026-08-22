@@ -1,13 +1,3 @@
-"""
-OCR Engine — PaddleOCR wrapper for the Hybrid extractor.
-
-Provides:
-  - Multi-page PDF support (renders pages to images)
-  - Word-level bounding boxes for layout-aware extraction
-  - Line-level text grouping
-  - CPU mode (GPU reserved for LayoutXLM)
-"""
-
 from __future__ import annotations
 
 import io
@@ -29,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OCRWord:
-    """A single OCR-detected word with position and confidence."""
+    # A single OCR-detected word with position and confidence.
     text: str
     confidence: float
     bbox: Tuple[float, float, float, float]  # x1, y1, x2, y2
@@ -70,7 +60,7 @@ class OCRWord:
 
 @dataclass
 class OCRLine:
-    """A line of text (grouped words)."""
+    # A line of text (grouped words).
     text: str
     confidence: float
     bbox: Tuple[float, float, float, float]
@@ -105,7 +95,7 @@ class OCRLine:
 
 @dataclass
 class OCRPage:
-    """Full OCR result for one page."""
+    # Full OCR result for one page.
     page_num: int
     text: str
     lines: List[OCRLine]
@@ -126,12 +116,6 @@ class OCRPage:
 
 @dataclass
 class OCRResult:
-    """
-    Complete OCR result for a document.
-
-    Provides both raw text and structured data (words, lines, bboxes)
-    for downstream extraction layers.
-    """
     file_path: str
     file_type: str          # 'pdf' or 'image'
     pages: List[OCRPage]
@@ -143,17 +127,15 @@ class OCRResult:
 
     @property
     def full_text(self) -> str:
-        """Concatenate all page texts with double newlines between pages."""
+        # Concatenate all page texts with double newlines between pages.
         return "\n\n".join(p.text for p in self.pages)
 
     @property
     def all_words(self) -> List[OCRWord]:
-        """All words across all pages."""
         return [w for p in self.pages for w in p.words]
 
     @property
     def all_lines(self) -> List[OCRLine]:
-        """All lines across all pages."""
         return [l for p in self.pages for l in p.lines]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -166,7 +148,6 @@ class OCRResult:
         }
 
     def get_page(self, page_num: int) -> Optional[OCRPage]:
-        """Get a specific page (0-indexed)."""
         if 0 <= page_num < len(self.pages):
             return self.pages[page_num]
         return None
@@ -189,18 +170,11 @@ class OCRResult:
 
 
 class OCREngine:
-    """
-    OCR Engine using PaddleOCR.
-
-    Always runs on CPU to reserve GPU for LayoutXLM.
-    Supports PDF (multi-page) and image files.
-    """
-
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         from paddleocr import PaddleOCR
 
         self.config = (config or OCR_CONFIG.copy()).copy()
-        self.config["use_gpu"] = False  # Always CPU — GPU reserved for NER
+        self.config["use_gpu"] = False  # Selalu CPU
 
         ocr_kwargs = {
             k: v for k, v in self.config.items()
@@ -212,7 +186,7 @@ class OCREngine:
         logger.info("OCREngine initialized (CPU mode)")
 
     def _render_pdf_page(self, pdf_doc, page_num: int, dpi: int = 300) -> Image.Image:
-        """Render a PDF page to PIL Image at specified DPI."""
+        # Konversi PDF ke PIL Image.
         page = pdf_doc[page_num]
         zoom = dpi / 72.0
         mat = fitz.Matrix(zoom, zoom)
@@ -227,7 +201,7 @@ class OCREngine:
         page_height: float,
         page_num: int,
     ) -> Tuple[List[OCRLine], List[OCRWord]]:
-        """Convert raw PaddleOCR word results to OCRLine/OCRWord objects."""
+        # Konversi PaddleOCR result ke OCRLine/OCRWord objects.
         if not words:
             return [], []
 
@@ -237,7 +211,7 @@ class OCREngine:
             conf = float(w[1][1]) if isinstance(w[1], (list, tuple)) and len(w[1]) > 1 else 1.0
             bbox_raw = w[0]
 
-            # Convert [[x1,y1],[x2,y2],[x3,y3],[x4,y4]] → [x1,y1,x3,y3]
+            # Konversi [[x1,y1],[x2,y2],[x3,y3],[x4,y4]] ke [x1,y1,x3,y3]
             if isinstance(bbox_raw, list) and len(bbox_raw) == 4:
                 xs = [pt[0] for pt in bbox_raw]
                 ys = [pt[1] for pt in bbox_raw]
@@ -253,13 +227,11 @@ class OCREngine:
                 page=page_num,
             ))
 
-        # Sort top-to-bottom, left-to-right
         sorted_words = sorted(
             ocr_words,
             key=lambda w: (round(w.y1 / 15) * 15, w.x1)
         )
 
-        # Group into lines by Y proximity
         lines_dict: Dict[int, List[OCRWord]] = {}
         for word in sorted_words:
             line_key = round(word.y1 / 10) * 10
@@ -285,7 +257,6 @@ class OCREngine:
         return ocr_lines, ocr_words
 
     def _process_image(self, img: Image.Image, page_num: int = 0) -> OCRPage:
-        """Run OCR on a single PIL Image."""
         img_array = np.array(img.convert("RGB"))
         result = self._ocr.ocr(img_array, cls=self.config.get("use_angle_cls", True))
 
@@ -310,7 +281,6 @@ class OCREngine:
         )
 
     def read_file(self, file_path: str | Path) -> OCRResult:
-        """Read a PDF or image file and return OCR results."""
         file_path = Path(file_path)
         suffix = file_path.suffix.lower()
 
@@ -322,7 +292,6 @@ class OCREngine:
             raise ValueError(f"Unsupported file type: {suffix}")
 
     def _read_pdf(self, file_path: Path) -> OCRResult:
-        """Read PDF, rendering each page and running OCR."""
         doc = fitz.open(file_path)
         pages = []
 
@@ -344,7 +313,6 @@ class OCREngine:
         )
 
     def _read_image(self, file_path: Path) -> OCRResult:
-        """Read a single image file."""
         img = Image.open(file_path).convert("RGB")
         page = self._process_image(img, page_num=0)
 
@@ -359,7 +327,7 @@ class OCREngine:
         self,
         file_paths: List[str | Path],
     ) -> Dict[str, Optional[OCRResult]]:
-        """Process multiple files. Returns dict mapping path → OCRResult."""
+        # Memproses multiple files. Returns dict mapping path → OCRResult.
         results = {}
         for fp in file_paths:
             try:

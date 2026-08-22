@@ -1,51 +1,3 @@
-"""
-HybridExtractor — Main orchestrator for the hybrid NER pipeline.
-
-Combines LayoutXLM (layout-aware ML) + Pattern (rule-based) approaches
-for optimal entity extraction from customs documents.
-
-Pipeline overview:
-  ┌──────────────────────────────────────────────────────────────────┐
-  │  1. OCR (PaddleOCR, CPU)                                         │
-  │     Output: OCRResult (full_text, words, lines, bboxes)          │
-  └─────────────────────────────┬────────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────────────┐
-        │                       │                               │
-        ▼                       ▼                               │
-  ┌─────────────┐        ┌──────────────────┐          │
-  │  Layer 1    │        │  Layer 2         │          │
-  │  LayoutXLM   │        │  Pattern          │          │
-  │  (Header +   │        │  (Line items +   │          │
-  │   Parties +   │        │   OCR errors +    │          │
-  │   Vessels +   │        │   Numeric tables) │          │
-  │   Ports)      │        │                   │          │
-  │  LAYOUT_      │        │  PATTERN_         │          │
-  │  ENTITIES     │        │  ENTITIES         │          │
-  └──────┬────────┘        └────────┬─────────┘          │
-         │                           │                      │
-         ▼                           ▼                      │
-  ┌─────────────────────────────────────────────────────────┐
-  │  3. Cross-Validator (conflict resolution)               │
-  │     - LAYOUT entities: LayoutXLM wins                    │
-  │     - PATTERN entities: Pattern wins                     │
-  │     - OCR corrections: Pattern wins                       │
-  │     - Cross-validation: boost confidence if both agree    │
-  └────────────────────────────┬────────────────────────────┘
-                                │
-                                ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │  4. Merger (multi-document, PL→CI weight merge)       │
-  │     Priority: CI > BL > PL                              │
-  └────────────────────────────┬────────────────────────────┘
-                                │
-                                ▼
-  ┌─────────────────────────────────────────────────────────┐
-  │  5. ShipmentEntities (unified output)                   │
-  │     Ready for CEISA export                               │
-  └─────────────────────────────────────────────────────────┘
-"""
-
 from __future__ import annotations
 
 import logging
@@ -69,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HybridExtractionResult:
-    """Complete result from the HybridExtractor pipeline."""
     shipment_id: str
     entities: ShipmentEntities
     ocr_results: Dict[str, OCRResult]
@@ -91,28 +42,7 @@ class HybridExtractionResult:
 
 
 class HybridExtractor:
-    """
-    Hybrid NER extractor combining LayoutXLM + Pattern approaches.
-
-    This is the main entry point for the hybrid pipeline. It orchestrates:
-      1. OCR (CPU, via PaddleOCR)
-      2. LayoutXLM extraction (header entities, GPU)
-      3. Pattern extraction (line items, CPU)
-      4. Cross-validation
-      5. Multi-document merging
-
-    Usage:
-        extractor = HybridExtractor(
-            layoutxlm_model="models/layoutxlm-custom",  # optional
-            use_gpu=True,
-        )
-        result = extractor.extract(
-            ocr_results={"CI": ci_ocr, "PL": pl_ocr, "BL": bl_ocr},
-            shipment_id="271796415",
-        )
-        entities = result.entities  # ShipmentEntities ready for export
-    """
-
+    # Hybrid NER extractor: kombinasi LayoutXLM + Pattern.
     def __init__(
         self,
         layoutxlm_model: Optional[str] = None,
@@ -123,37 +53,25 @@ class HybridExtractor:
         use_vision_fallback: bool = True,
         vision_min_confidence: float = 0.3,
     ):
-        """
-        Args:
-            layoutxlm_model: Path to fine-tuned LayoutXLM model.
-                            If None, uses text-based fallback.
-            use_gpu: Use GPU for LayoutXLM inference.
-                    Note: PaddleOCR always runs on CPU.
-            layout_confidence_threshold: Minimum confidence for LayoutXLM entities.
-            vision_api_key: API key for Vision LLM (reads ADACODE_API_KEY if None).
-            vision_model: Vision model name (default: gpt-4o).
-            use_vision_fallback: Call Vision LLM when primary extraction confidence is low.
-            vision_min_confidence: Minimum confidence threshold to call Vision fallback.
-        """
         self.layoutxlm_model = layoutxlm_model
         self.use_gpu = use_gpu
         self.layout_confidence_threshold = layout_confidence_threshold
         self.vision_min_confidence = vision_min_confidence
 
-        # Initialize OCR engine (always CPU)
+        # OCR engine (CPU)
         self._ocr = OCREngine()
 
-        # Initialize LayoutXLM extractor (GPU)
+        # Initialize LayoutXLM extractor
         self._layout_extractor = LayoutExtractor(
             model_path=layoutxlm_model,
             use_gpu=use_gpu,
             confidence_threshold=layout_confidence_threshold,
         )
 
-        # Initialize Pattern extractors
+        # Pattern extractors
         self._line_item_extractor = LineItemExtractor()
 
-        # Initialize Vision extractor (API-based)
+        # Initialize Vision extractor
         self._vision_extractor = VisionModelExtractor(
             api_key=vision_api_key,
             model=vision_model,
@@ -172,7 +90,6 @@ class HybridExtractor:
 
     @property
     def layoutxlm_available(self) -> bool:
-        """True if LayoutXLM model is available."""
         return self._layout_extractor._try_load_model()
 
     def extract(
@@ -180,44 +97,27 @@ class HybridExtractor:
         ocr_results: Dict[str, OCRResult],
         shipment_id: str = "",
     ) -> HybridExtractionResult:
-        """
-        Run the full hybrid extraction pipeline.
-
-        Pipeline (4 steps):
-          1. LayoutXLM → header entities (parties, vessels, ports)
-          2. Pattern    → line items, numeric values
-          3. Vision LLM → fallback when confidence is low (optional)
-          4. Merger     → unify all layers into ShipmentEntities
-
-        Args:
-            ocr_results: Dict mapping doc type → OCRResult.
-                        Keys: "CI", "PL", "BL" (any subset)
-            shipment_id: Unique shipment identifier for logging
-
-        Returns:
-            HybridExtractionResult with ShipmentEntities ready for CEISA export.
-        """
         t0 = time.time()
         notes: List[str] = []
         vision_used = False
 
-        # ── Step 1: Extract LayoutXLM entities (header, parties, vessels) ─
+        # Extract LayoutXLM entities
         ci_layout = self._extract_layout(ocr_results.get("CI"), "CI")
         bl_layout = self._extract_layout(ocr_results.get("BL"), "BL")
         pl_layout = self._extract_layout(ocr_results.get("PL"), "PL")
 
-        # ── Step 2: Extract Pattern entities (numeric, tabular) ─────────
+        # Extract Pattern entities (numeric, tabular)
         ci_pattern = self._extract_pattern(ocr_results.get("CI"))
         bl_pattern = self._extract_pattern(ocr_results.get("BL"))
         pl_pattern = self._extract_pattern(ocr_results.get("PL"))
 
-        # ── Step 3: Extract line items from CI ─────────────────────────
+        # Extract line items dari CI
         ci_text = ocr_results.get("CI", OCRResult("", "", [], 0)).full_text
         ci_items = []
         if ci_text:
             ci_items = self._line_item_extractor.extract_from_ci(ci_text)
 
-        # ── Step 4: Merge all layers ───────────────────────────────────
+        # Merge semua layers
         entities = self._merger.merge(
             ci_layout=ci_layout,
             ci_pattern=ci_pattern,
@@ -229,11 +129,7 @@ class HybridExtractor:
             pl_text=ocr_results.get("PL", OCRResult("", "", [], 0)).full_text,
         )
 
-        # ── Step 5: Vision LLM fallback ───────────────────────────────
-        # Call Vision LLM when:
-        #   a) API is available AND
-        #   b) (items < 3 OR confidence < threshold) AND
-        #   c) use_vision_fallback is enabled
+        # Vision LLM fallback
         should_call_vision = (
             self._vision_extractor.available
             and self._use_vision_fallback
@@ -266,7 +162,7 @@ class HybridExtractor:
         notes.append(f"Items extracted: {len(entities.items)}")
         notes.append(f"Extraction time: {elapsed:.2f}s")
 
-        # ── Production logging summary ─────────────────────────────────
+        # Production logging summary
         quality_report = entities.get_quality_report()
         logger.info(
             f"[{shipment_id}] Hybrid extraction complete: "
@@ -278,7 +174,7 @@ class HybridExtractor:
             f"time={elapsed:.2f}s"
         )
 
-        # Log missing critical fields for production monitoring
+        # Log missing critical fields
         critical_missing = [
             f for f in ["invoice_number", "currency", "incoterms", "total_amount"]
             if not getattr(entities, f, None)
@@ -302,24 +198,16 @@ class HybridExtractor:
         ocr_results: Dict[str, OCRResult],
         shipment_id: str,
     ) -> Optional[VisionExtractionResult]:
-        """
-        Call Vision LLM for enhanced extraction.
-
-        Collects image paths from OCR results and calls the Vision API
-        for each document type. For CI, uses high-detail mode.
-        """
+        # Panggil Vision LLM untuk enhanced extraction.
         if not self._vision_extractor.available:
             return None
 
-        # Collect CI images
         ci_result = ocr_results.get("CI")
         bl_result = ocr_results.get("BL")
 
-        # Try to find original image files
         ci_image = self._find_image_path(ci_result)
         bl_image = self._find_image_path(bl_result)
 
-        # Try CI first (primary document)
         if ci_image:
             try:
                 result = self._vision_extractor.extract_from_image(ci_image, doc_type="CI")
@@ -328,7 +216,6 @@ class HybridExtractor:
             except Exception as e:
                 logger.warning(f"Vision extraction failed for CI: {e}")
 
-        # Try BL as fallback
         if bl_image:
             try:
                 result = self._vision_extractor.extract_from_image(bl_image, doc_type="BL")
@@ -337,7 +224,6 @@ class HybridExtractor:
             except Exception as e:
                 logger.warning(f"Vision extraction failed for BL: {e}")
 
-        # Try batch extraction (CI + BL + PL together)
         images = []
         doc_types = []
         if ci_image:
@@ -356,21 +242,19 @@ class HybridExtractor:
         return None
 
     def _find_image_path(self, ocr_result: Optional[OCRResult]) -> Optional[str]:
-        """Find the original image path from an OCRResult."""
+        # Cari image path dari OCRResult.
         if ocr_result is None:
             return None
 
-        # Check if the file is an image
+        # Cek apakah file adalah image
         path = Path(ocr_result.file_path)
         if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp"):
             if path.exists():
                 return str(path)
 
-        # Check rendered pages directory
-        # OCR engine may store rendered pages; look for them
+        # Cek rendered pages directory
         rendered_dir = path.parent
         if rendered_dir.name == "rendered":
-            # Try to find page images
             for page_num in range(ocr_result.total_pages):
                 page_img = rendered_dir / f"{path.stem}_p{page_num}.png"
                 if page_img.exists():
@@ -383,16 +267,7 @@ class HybridExtractor:
         entities: ShipmentEntities,
         vision: VisionExtractionResult,
     ) -> ShipmentEntities:
-        """
-        Fuse Vision LLM results into existing entities.
-
-        Strategy:
-          - Header fields: prefer Vision if existing value is None
-          - Line items: prefer Vision items if they have more items
-                         OR if Vision has higher confidence
-          - Container/seal numbers: merge both lists (deduplicate)
-        """
-        # Header fields — fill None values from Vision
+        # Fuse Vision LLM results ke entities yang ada.
         header_fills = {
             "invoice_number": vision.invoice_number,
             "invoice_date": vision.invoice_date,
@@ -425,30 +300,25 @@ class HybridExtractor:
             if value and getattr(entities, field, None) is None:
                 setattr(entities, field, value)
 
-        # Merge container numbers (deduplicate)
         if vision.container_numbers:
             existing = set(entities.container_numbers)
             for cn in vision.container_numbers:
                 if cn not in existing:
                     entities.container_numbers.append(cn)
 
-        # Merge seal numbers (deduplicate)
         if vision.seal_numbers:
             existing = set(entities.seal_numbers)
             for sn in vision.seal_numbers:
                 if sn not in existing:
                     entities.seal_numbers.append(sn)
 
-        # Line items — use Vision items if they're better
         if vision.items:
             existing_count = len(entities.items)
             vision_count = len(vision.items)
             vision_conf = vision.confidence
             existing_conf = entities.extraction_confidence
 
-            # Replace items if Vision has more items OR higher confidence
             if vision_count > existing_count or (vision_count == existing_count and vision_conf > existing_conf):
-                # Mark items as coming from Vision
                 for item in vision.items:
                     item.source = "vision"
                 entities.items = vision.items
@@ -457,7 +327,6 @@ class HybridExtractor:
                     f"conf={vision_conf:.2f} (vs {existing_conf:.2f})"
                 )
 
-        # Recompute totals if items changed significantly
         if vision.items and len(vision.items) > len(entities.items) * 0.5:
             self._merger._compute_totals(entities)
 
@@ -468,7 +337,7 @@ class HybridExtractor:
         ocr_result: Optional[OCRResult],
         doc_type: str,
     ) -> Dict[str, List]:
-        """Extract layout entities from a document using LayoutXLM."""
+        # Extract layout entities dengan LayoutXLM.
         if ocr_result is None:
             return {}
 
@@ -482,7 +351,7 @@ class HybridExtractor:
         self,
         ocr_result: Optional[OCRResult],
     ) -> Dict[str, List[PatternEntity]]:
-        """Extract pattern entities from a document."""
+        # Extract pattern entities.
         if ocr_result is None:
             return {}
 
@@ -501,17 +370,6 @@ class HybridExtractor:
         file_paths: Dict[str, str],
         shipment_id: str = "",
     ) -> HybridExtractionResult:
-        """
-        Convenience method: OCR + extract in one call.
-
-        Args:
-            file_paths: Dict mapping doc type → file path.
-                       E.g., {"CI": "path/to/CI.pdf", "PL": "path/to/PL.pdf"}
-            shipment_id: Shipment ID for logging
-
-        Returns:
-            HybridExtractionResult
-        """
         ocr_results: Dict[str, OCRResult] = {}
         failed_docs = []
 
@@ -536,7 +394,6 @@ class HybridExtractor:
                     failed_docs.append(f"{doc_type} ({type(e).__name__}: {e})")
                     logger.warning(f"OCR failed for {doc_type} ({path}): {e}")
 
-        # If ALL documents failed OCR, raise a clear error
         if not ocr_results and failed_docs:
             raise ValueError(
                 f"OCR extraction failed for all documents: {', '.join(failed_docs)}. "
@@ -545,29 +402,13 @@ class HybridExtractor:
 
         return self.extract(ocr_results, shipment_id)
 
-
-# ── Convenience function ────────────────────────────────────────────────────
-
 def extract_shipment(
     ocr_results: Dict[str, OCRResult],
     shipment_id: str = "",
     layoutxlm_model: Optional[str] = None,
     use_gpu: bool = False,
 ) -> ShipmentEntities:
-    """
-    One-line extraction function.
-
-    Usage:
-        ocr_engine = OCREngine()
-        ci_ocr = ocr_engine.read_file("CI.pdf")
-        pl_ocr = ocr_engine.read_file("PL.pdf")
-        bl_ocr = ocr_engine.read_file("BL.pdf")
-
-        entities = extract_shipment(
-            {"CI": ci_ocr, "PL": pl_ocr, "BL": bl_ocr},
-            shipment_id="271796415",
-        )
-    """
+    # One-line extraction function.
     extractor = HybridExtractor(
         layoutxlm_model=layoutxlm_model,
         use_gpu=use_gpu,

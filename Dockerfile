@@ -1,6 +1,3 @@
-# Document OCR Web Application
-# Optimized build: dependencies cached unless requirements.txt changes
-
 FROM python:3.11-slim-bookworm
 
 LABEL maintainer="adaCODE"
@@ -8,7 +5,7 @@ LABEL description="Document OCR CEISA 4.0 Extraction Web Application"
 
 WORKDIR /app
 
-# ── Install system dependencies for OpenCV, PyMuPDF, PIL, OCR, and PostgreSQL ──
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -23,10 +20,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Copy and install Python dependencies FIRST (cached unless requirements.txt changes) ──
+# Copy and install Python dependencies
 COPY requirements.txt /app/requirements.txt
 
-# Install PyTorch CPU first (separate due to custom index)
+# Install PyTorch CPU
 RUN pip install --no-cache-dir \
     torch==2.1.0 \
     torchvision==0.16.0 \
@@ -53,24 +50,19 @@ RUN pip install --no-cache-dir \
     "numpy<2" \
     regex
 
-# ── Copy application code ──────────────────────────────────────────────────────
 COPY src/ /app/src/
 COPY ml/ /app/ml/
 COPY download_model.py /app/download_model.py
 
-# ── Environment variables ─────────────────────────────────────────────────────
 ENV PYTHONPATH=/app/src:/app:${PYTHONPATH}
 ENV PYTHONUNBUFFERED=1
 
-# ── Download ML model (optional) ────────────────────────────────────────────
 ARG MODEL_REPO=
 RUN if [ -n "$MODEL_REPO" ]; then \
     pip install --no-cache-dir huggingface_hub && \
     python /app/download_model.py --huggingface-repo "$MODEL_REPO"; \
     fi
 
-# ── Expose port ─────────────────────────────────────────────────────────────
 EXPOSE 8000
 
-# ── Run the web server ──────────────────────────────────────────────────────
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

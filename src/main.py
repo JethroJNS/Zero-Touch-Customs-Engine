@@ -1,26 +1,3 @@
-"""
-FastAPI application entry point.
-
-This is intentionally minimal — all routes, models, and services are
-organized in sub-packages to keep the codebase modular and maintainable.
-
-Structure:
-    main.py          ← App init, CORS, static mount, startup events
-    routes/
-        shipments.py  ← /api/shipments CRUD + /api/extract
-        activities.py ← /api/activities + /api/activities/stats
-        dashboard.py  ← /api/dashboard
-        pages.py      ← /, /dashboard, /declarations, /activity, /smart-upload
-    models/
-        database.py   ← DB engine, session, Base (shared)
-        shipment.py   ← Shipment SQLAlchemy model
-        activity.py   ← Activity model
-    services/
-        seed_data.py  ← Sample data for development
-    templates/
-        *.html        ← Page templates
-"""
-
 import logging
 from pathlib import Path
 
@@ -30,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models.database import Base, sync_engine, SessionLocal
 
-# ── Logging ─────────────────────────────────────────────────────────────────────
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -38,7 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ocr_web")
 
-# ── App factory ────────────────────────────────────────────────────────────────
+# App factory
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Document OCR Extraction Engine",
@@ -60,7 +37,7 @@ def create_app() -> FastAPI:
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    # ── Startup events ───────────────────────────────────────────────────────
+    # Startup events
     @app.on_event("startup")
     async def on_startup():
         import asyncio
@@ -87,7 +64,7 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to seed data: {e}")
 
-    # ── Register routers ──────────────────────────────────────────────────────
+    # Register routers
     from routes.shipments import router as shipments_router
     from routes.activities import router as activities_router
     from routes.dashboard import router as dashboard_router
@@ -98,7 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(pages_router)
 
-    # ── Health check ───────────────────────────────────────────────────────────
+    # Health check
     @app.get("/health", tags=["health"])
     async def health_check():
         return {"status": "ok"}
@@ -106,7 +83,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# ── App instance ────────────────────────────────────────────────────────────────
+# App instance
 app = create_app()
 
 
