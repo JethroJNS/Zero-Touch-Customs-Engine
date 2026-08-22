@@ -1,7 +1,3 @@
-"""
-Seed data service for development.
-Provides sample shipment and activity records.
-"""
 import json
 import logging
 from datetime import timedelta
@@ -17,7 +13,6 @@ def _generate_reference_code() -> str:
 
 
 def seed_shipments(db: Session, clear_existing: bool = False) -> int:
-    """Seed the database with sample shipment records."""
     if clear_existing:
         db.query(Shipment).delete()
         db.commit()
@@ -51,7 +46,6 @@ def seed_shipments(db: Session, clear_existing: bool = False) -> int:
 
 
 def seed_activities(db: Session, clear_existing: bool = False) -> int:
-    """Seed the activities table with sample audit log records."""
     if clear_existing:
         db.query(Activity).delete()
         db.commit()

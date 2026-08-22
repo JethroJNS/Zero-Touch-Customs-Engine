@@ -1,8 +1,3 @@
-"""
-CEISA 4.0 Authentication Handler.
-
-Handles login, token refresh, and token lifecycle management.
-"""
 import time
 import logging
 from dataclasses import dataclass, field
@@ -16,16 +11,14 @@ logger = logging.getLogger("ceisa")
 
 @dataclass
 class CeisaToken:
-    """Represents a CEISA API access token."""
     access_token: str
-    expires_at: float  # Unix timestamp
+    expires_at: float
     token_type: str = "bearer"
     expires_in: int = 900
     refresh_token: Optional[str] = None
 
     @property
     def is_expired(self) -> bool:
-        """Check if token is expired (with 30s buffer)."""
         return time.time() >= (self.expires_at - 30)
 
     def to_dict(self) -> dict:
@@ -39,7 +32,6 @@ class CeisaToken:
 
     @classmethod
     def from_response(cls, data: dict) -> "CeisaToken":
-        """Create token from API login response."""
         now = time.time()
         expires_in = data.get("expires_in", 900)
         return cls(
@@ -52,30 +44,12 @@ class CeisaToken:
 
 
 class CeisaAuth:
-    """
-    Manages CEISA API authentication lifecycle.
-
-    Flow:
-      1. Login with username/password → get access_token
-      2. Use access_token as Bearer token for all subsequent requests
-      3. Re-authenticate when token expires (every ~15 minutes)
-    """
-
     def __init__(self, cfg: Optional[config.__class__] = None):
         self.cfg = config
         self._token: Optional[CeisaToken] = None
         self._client = httpx.AsyncClient(timeout=30.0)
 
     async def login(self) -> CeisaToken:
-        """
-        Authenticate with CEISA API and obtain access token.
-
-        POST {auth_url}
-        Body: {"username": "...", "password": "..."}
-
-        Returns CeisaToken on success.
-        Raises httpx.HTTPStatusError on failure.
-        """
         payload = {
             "username": self.cfg.username,
             "password": self.cfg.password,
@@ -102,21 +76,17 @@ class CeisaAuth:
         return token
 
     async def get_token(self) -> CeisaToken:
-        """
-        Get a valid access token, re-authenticating if expired.
-        This is the main method route handlers should call.
-        """
+        # Get valid access token, re-authenticate jika expired.
         if self._token is None or self._token.is_expired:
             return await self.login()
         return self._token
 
     async def get_auth_header(self) -> dict:
-        """Get the Authorization header dict with a valid token."""
+        # Get Authorization header dict dengan valid token.
         token = await self.get_token()
         return {"Authorization": f"Bearer {token.access_token}"}
 
     async def close(self):
-        """Close the HTTP client."""
         await self._client.aclose()
 
     async def __aenter__(self):
@@ -126,12 +96,12 @@ class CeisaAuth:
         await self.close()
 
 
-# ── Module-level auth instance ────────────────────────────────────────────────────
+# Module-level auth instance
 _auth: Optional[CeisaAuth] = None
 
 
 async def get_auth() -> CeisaAuth:
-    """Get or create the module-level CEISA auth instance."""
+    # Get atau create module-level CEISA auth instance.
     global _auth
     if _auth is None:
         _auth = CeisaAuth()

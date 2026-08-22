@@ -1,17 +1,3 @@
-"""
-CEISA 4.0 Data Mapper.
-
-Transforms OCR extraction result (ShipmentEntities) into CEISA API JSON format.
-
-CEISA Document JSON Fields (from PIA CEISA 4.0 Pedoman Integrasi Aplikasi):
-  https://ceisa40.gitbook.io/pia-ceisa40/
-
-The document follows PIB (Pemberitahuan Impor Barang) structure with:
-  - Header: company info, document dates, incoterms, referensi
-  - Barang (items): per-item details with HS, FOB, CIF, insurance, freight
-  - Kontainer: container details
-  - Document signatures and validation info
-"""
 import re
 import logging
 from datetime import datetime, date
@@ -21,28 +7,16 @@ logger = logging.getLogger("ceisa")
 
 
 class CeisaMapper:
-    """
-    Maps OCR extraction result → CEISA PIB/PEB JSON.
+    # Maps OCR extraction result ke CEISA PIB/PEB JSON.
 
-    The extraction engine produces:
-      - ShipmentEntities with header_fields (invoice_number, invoice_date, etc.)
-      - List[ItemEntity] with quantity, unit_price, amount, hs_code, etc.
+    # Kode kantor pabean
+    KODE_KANTOR = "051000"
 
-    CEISA requires:
-      - Kode kantor pabean (6 digits)
-      - Nomor Aju (26 digits: 4 kode + 2 dokumen + 6 NPWP + 8 tanggal + 6 sequence)
-      - Tanggal pengajuan
-      - Per-item breakdown: HS, FOB, CIF, qty, unit, harga satuan, etc.
-    """
-
-    # Indonesian customs office codes (kode kantor pabean)
-    KODE_KANTOR = "051000"  # example: KPPBC TMP / Jakarta
-
-    # Document type codes (kode dokumen pabean)
+    # Kode dokumen pabean
     DOKUMEN_PIB = "20"      # PIB - Pemberitahuan Impor Barang
     DOKUMEN_PEB = "30"      # PEB - Pemberitahuan Ekspor Barang
 
-    # Incoterms codes used by CEISA
+    # Incoterms codes
     INCOTERM_CODES = {
         "FOB": "FOB", "CIF": "CIF", "CFR": "CFR",
         "CPT": "CPT", "CIP": "CIP", "DAP": "DAP",
@@ -50,7 +24,7 @@ class CeisaMapper:
         "FAS": "FAS", "DAT": "DAT",
     }
 
-    # Cara bayar codes (payment method)
+    # Cara bayar codes
     CARA_BAYAR = {
         "T/T": "1",    # Telegraphic Transfer
         "L/C": "2",    # Letter of Credit
@@ -58,10 +32,10 @@ class CeisaMapper:
         "D/A": "4",    # Documents against Acceptance
         "CASH": "5",   # Cash
         "CREDIT": "6", # Credit
-        "OTHER": "9",   # Lainnya
+        "OTHER": "9",  # Lainnya
     }
 
-    # Jenis nilai codes (valuation method)
+    # Jenis nilai codes
     JENIS_NILAI = {
         "KMD": "KMD",  # Cost, Insurance, Freight
         "NM": "NM",    # Net Money
@@ -69,19 +43,10 @@ class CeisaMapper:
     }
 
     def __init__(self, entities=None):
-        """
-        Args:
-            entities: ShipmentEntities from the extraction engine (optional,
-                      can also call map_entity() separately).
-        """
         self.entities = entities
 
     def map_header(self, entities) -> Dict[str, Any]:
-        """
-        Build the CEISA header document from extracted entities.
-
-        Returns a dict ready for the CEISA /openapi/document POST body.
-        """
+        # Build the CEISA header document from extracted entities.
         e = entities
 
         # Parse dates
@@ -96,12 +61,12 @@ class CeisaMapper:
         incoterms = getattr(e, "incoterms", None)
         incoterm_code = self.INCOTERM_CODES.get(str(incoterms).upper(), "FOB") if incoterms else "FOB"
 
-        # Payment method (try to detect from text, default to T/T)
+        # Payment method
         cara_bayar = self.CARA_BAYAR.get(
             str(getattr(e, "payment_method", "T/T")).upper(), "1"
         )
 
-        # Port codes from lookups
+        # Port codes dari lookups
         port_loading = getattr(e, "port_of_loading", None)
         port_discharge = getattr(e, "port_of_discharge", None)
 
@@ -109,17 +74,14 @@ class CeisaMapper:
         buyer_name = getattr(e, "buyer_name", None) or ""
         seller_name = getattr(e, "seller_name", None) or ""
 
-        # nomorAju: generate from company NPWP + date + sequence
-        # Format: 4 kodeKantor + 2 kodeDokumen + 6 npwpPerusahaan + 8 tglAju + 6 seri
-        # We use a placeholder NPWP + sequential number if not available
+        # nomorAju: generate dari NPWP + date + sequence
         nomor_aju = self._generate_nomor_aju(
             kode_kantor=self.KODE_KANTOR,
             kode_dokumen=self.DOKUMEN_PIB,
             tanggal=aju_date,
         )
 
-        # NOPBM (Nilai Penzina Bea Masuk) — exchange rate
-        # Use the exchange rate from rules.py or default to 1.0
+        # NDPBM (Nilai Pabean) — exchange rate
         ndpbm = getattr(e, "ndpbm", None) or "15000.0"
         ndpbm_val = self._parse_amount(ndpbm)
 
@@ -127,7 +89,7 @@ class CeisaMapper:
         gross_weight = self._parse_amount(getattr(e, "total_gross_weight", None))
         net_weight = self._parse_amount(getattr(e, "total_net_weight", None))
 
-        # Freight / insurance (from entities or calculated)
+        # Freight / insurance
         freight = self._parse_amount(getattr(e, "freight", None))
         insurance = self._parse_amount(getattr(e, "insurance", None))
 
@@ -137,7 +99,7 @@ class CeisaMapper:
             fob_amount = max(0, total_amount - freight - insurance)
 
         header = {
-            # ── Identitas Dokumen ──────────────────────────────────────────
+            # Identitas Dokumen
             "nomorAju": nomor_aju,
             "tanggalAju": aju_date,
             "kodeKantor": self.KODE_KANTOR,
@@ -155,35 +117,35 @@ class CeisaMapper:
             "nilaiBarang": fob_amount,          # FOB for CIF calculation base
             "nilaiMaklon": 0,
 
-            # ── Pelabuhan & Transportasi ────────────────────────────────────
+            # Pelabuhan & Transportasi
             "kodePelMuat": port_loading or "CN",
             "kodePelTransit": "",
             "kodePelTujuan": port_discharge or "ID",
 
-            # ── Identitas Perusahaan ─────────────────────────────────────────
+            # Identitas Perusahaan
             "npwpPerusahaan": getattr(e, "company_npwp", "") or "000000000000000",
             "namaPerusahaan": buyer_name or seller_name or "UNKNOWN",
             "alamatPerusahaan": getattr(e, "company_address", "") or "",
 
-            # ── Data PIB Header ────────────────────────────────────────────
+            # Data PIB Header
             "kodeJenisNilai": "KMD",
             "hargaPenyerahan": 0,
             "jumlahKontainer": self._parse_int(getattr(e, "container_count", None), default=1),
             "jumlahTandaPengaman": 0,
             "kodeAsuransi": "LN",               # Lokal / LN
 
-            # ── BC 2.5 / BC 1.1 Reference ─────────────────────────────────
+            # BC 2.5 / BC 1.1 Reference
             "nomorBc11": getattr(e, "bc11_number", "") or "",
             "tanggalBc11": getattr(e, "bc11_date", "") or "",
             "posBc11": "0001",
             "subPosBc11": "00000000",
 
-            # ── Identitas Pabean (pengguna jasa) ──────────────────────────
+            # Identitas Pabean
             "idPengguna": getattr(e, "user_id", "") or "",
             "namaTtd": getattr(e, "signatory_name", "") or "",
             "jabatanTtd": getattr(e, "signatory_title", "") or "MANAGER",
 
-            # ── Tambahan ───────────────────────────────────────────────────
+            # Tambahan
             "seri": 0,
             "netto": net_weight or 0,
             "bruto": gross_weight or 0,
@@ -194,11 +156,7 @@ class CeisaMapper:
         return header
 
     def map_items(self, entities) -> List[Dict[str, Any]]:
-        """
-        Build per-item CEISA barang list from extracted items.
-
-        Returns a list of barang dicts matching CEISA PIB item schema.
-        """
+        # Build per-item CEISA barang list from extracted items.
         items = getattr(entities, "items", []) or []
         if not items:
             logger.warning("No items to map — CEISA requires at least one item")
@@ -240,18 +198,14 @@ class CeisaMapper:
                 "bruto": self._parse_amount(getattr(item, "gross_weight", None)) or 0,
                 "kodeKemasan": getattr(item, "packaging", "") or "PK",
                 "jumlahKemasan": self._parse_int(getattr(item, "cartons", None), default=1),
-                "kodeGuna": "01",  # Barang import untuk dipakai
+                "kodeGuna": "01",
             }
             mapped_items.append(barang)
 
         return mapped_items
 
     def map_document(self, entities) -> Dict[str, Any]:
-        """
-        Build complete CEISA PIB document JSON.
-
-        Returns the full POST body for /openapi/document.
-        """
+        # Build complete CEISA PIB document JSON.
         header = self.map_header(entities)
         items = self.map_items(entities)
 
@@ -262,7 +216,7 @@ class CeisaMapper:
 
         return document
 
-    # ── Helpers ────────────────────────────────────────────────────────────────
+    # Helpers
 
     def _generate_nomor_aju(
         self,
@@ -272,41 +226,32 @@ class CeisaMapper:
         npwp: str = "000000000000000",
         sequence: int = 1,
     ) -> str:
-        """
-        Generate nomorAju (26 characters).
-
-        Format: 4(kodeKantor) + 2(kodeDok) + 6(npwp) + 8(tglYYYYMMDD) + 6(seri)
-        All alphanumeric.
-        """
         # Clean date: YYYY-MM-DD → YYYYMMDD
         date_part = tanggal.replace("-", "").replace("/", "")
         if len(date_part) != 8:
             date_part = datetime.now().strftime("%Y%m%d")
 
-        # Clean NPWP: only digits
+        # Clean NPWP: hanya digit
         npwp_clean = re.sub(r"\D", "", npwp)[:6].ljust(6, "0")
 
-        # Sequence: 6 digits, zero-padded
+        # Sequence: 6 digit, zero-padded
         seq_str = str(sequence).zfill(6)
 
         nomor_aju = f"{kode_kantor}{kode_dokumen}{npwp_clean}{date_part}{seq_str}"
         return nomor_aju
 
     def _normalize_hs(self, hs: Optional[str]) -> str:
-        """Normalize HS code to 8-digit format (or 6-digit minimum)."""
         if not hs:
             return ""
-        # Remove non-digits
+        # Remove non-digit
         digits = re.sub(r"\D", "", str(hs))
         if len(digits) >= 6:
             return digits[:8].ljust(8, "0")
         return digits.zfill(8)
 
     def _parse_date(self, value: Optional[str]) -> Optional[datetime]:
-        """Parse date string from OCR extraction."""
         if not value:
             return None
-        # Try common formats
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%b %d, %Y", "%d %b %Y"):
             try:
                 return datetime.strptime(str(value).strip(), fmt)
@@ -315,13 +260,12 @@ class CeisaMapper:
         return None
 
     def _parse_amount(self, value: Any) -> Optional[float]:
-        """Parse numeric amount from string or number."""
+        # Parse numeric amount from string or number.
         if value is None:
             return None
         if isinstance(value, (int, float)):
             return float(value)
         s = str(value).strip()
-        # Remove currency symbols and thousand separators
         s = re.sub(r"[A-Z$€£¥]", "", s)
         s = s.replace(",", "")
         try:
@@ -330,7 +274,7 @@ class CeisaMapper:
             return None
 
     def _parse_int(self, value: Any, *, default: int = 0) -> int:
-        """Parse integer from string or number."""
+        # Parse integer from string or number.
         if value is None:
             return default
         if isinstance(value, int):

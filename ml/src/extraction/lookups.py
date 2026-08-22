@@ -1,33 +1,12 @@
-"""
-Lookup Tables for CEISA 4.0 Export.
-
-Maps raw extracted values → CEISA standardized codes.
-These are the external/third-party data sources that NER cannot provide.
-
-Coverage:
-  - HS Chapter → BM (Bea Materai) tariff rates
-  - Port names → UN/LOCODE
-  - Country names → ISO 2-letter codes
-  - Currency names → ISO 4217 codes
-  - Incoterms → CEISA incoterm codes
-  - Packaging types → CEISA packaging codes
-  - Port codes → CEISA port codes
-"""
-
 from __future__ import annotations
 
 import re
 from typing import Dict, Optional, Tuple
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # HS TARIFF RATES (Bea Masuk / BM)
-# Based on PMK Nomor 172 Tahun 2023 and BKF regulations.
-# Format: chapter_range → (tariff_pct, facility_code)
-# ═══════════════════════════════════════════════════════════════════════════════
-
 HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
-    # Textile and textile articles (HS 50-63)
+    # Textile (HS 50-63)
     "50": (5.0, "3"),   # Silk
     "51": (5.0, "3"),   # Wool, fine hair
     "52": (5.0, "3"),   # Cotton
@@ -43,10 +22,10 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     "62": (10.0, "3"),  # Apparel, not knitted
     "63": (10.0, "3"),  # Other textile articles
 
-    # Rubber and articles (HS 40)
+    # Rubber (HS 40)
     "40": (5.0, "3"),   # Rubber and articles thereof
 
-    # Machinery and mechanical appliances (HS 84)
+    # Machinery (HS 84)
     "84": (0.0, "3"),   # Nuclear reactors, machinery
     "85": (0.0, "3"),   # Electrical machinery
 
@@ -81,7 +60,7 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     # Plastics (HS 39)
     "39": (5.0, "3"),   # Plastics and articles thereof
 
-    # Paper and paperboard (HS 47-49)
+    # Paper (HS 47-49)
     "47": (5.0, "3"),   # Pulp, paper
     "48": (5.0, "3"),   # Paper articles
     "49": (5.0, "3"),   # Books, printed matter
@@ -91,7 +70,7 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     "42": (10.0, "3"),  # Leather articles
     "43": (5.0, "3"),   # Furskins, artificial fur
 
-    # Wood and articles (HS 44-46)
+    # Wood (HS 44-46)
     "44": (5.0, "3"),   # Wood and articles
     "45": (5.0, "3"),   # Cork
     "46": (5.0, "3"),   # Manufactures of straw
@@ -107,7 +86,7 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     "69": (5.0, "3"),   # Ceramic products
     "70": (5.0, "3"),   # Glass and articles
 
-    # Natural/cultured pearls (HS 71)
+    # Pearls (HS 71)
     "71": (5.0, "3"),   # Pearls, precious stones, metals
 
     # Optical/photographic (HS 90-92)
@@ -115,7 +94,7 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     "91": (5.0, "3"),   # Clocks and watches
     "92": (5.0, "3"),   # Musical instruments
 
-    # Arms and ammunition (HS 93)
+    # Arms (HS 93)
     "93": (5.0, "3"),   # Arms and ammunition
 
     # Furniture, toys (HS 94-96)
@@ -123,25 +102,16 @@ HS_TARIFF_RATES: Dict[str, Tuple[float, str]] = {
     "95": (10.0, "3"),  # Toys, games
     "96": (10.0, "3"),  # Miscellaneous manufactured articles
 
-    # Works of art (HS 97)
+    # Art (HS 97)
     "97": (0.0, "3"),   # Works of art, antiques
 
-    # Default for unlisted chapters
+    # Default
     "_default": (5.0, "3"),
 }
 
 
 def get_hs_tariff(hs_code: str) -> Tuple[float, str]:
-    """
-    Get BM tariff rate and facility code for an HS code.
-
-    Args:
-        hs_code: HS code (e.g., "59022020", "40112000")
-
-    Returns:
-        Tuple of (tariff_pct, facility_code)
-        e.g., (5.0, "3") for standard rate with facility
-    """
+    # Get BM tariff rate dan facility code untuk HS code.
     if not hs_code:
         return (5.0, "3")
 
@@ -157,13 +127,9 @@ def get_hs_tariff(hs_code: str) -> Tuple[float, str]:
     return HS_TARIFF_RATES["_default"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PORT NAMES → UN/LOCODE
-# Indonesian customs uses UN/LOCODE for all ports.
-# ═══════════════════════════════════════════════════════════════════════════════
-
 PORT_TO_LOCODE: Dict[str, str] = {
-    # China - Major ports
+    # China
     "YANGZHOU": "CNYZH",
     "YANGZHOU, CHINA": "CNYZH",
     "ZHANGJIAGANG": "CNZJG",
@@ -214,7 +180,7 @@ PORT_TO_LOCODE: Dict[str, str] = {
     "SEOUL": "KRINC",
     "INCHEON": "KRINC",
 
-    # Southeast Asia
+    # SE Asia
     "SINGAPORE": "SGSIN",
     "SINGAPORE, SINGAPORE": "SGSIN",
     "PORT KLANG": "MYPKG",
@@ -241,7 +207,7 @@ PORT_TO_LOCODE: Dict[str, str] = {
     "PANGKAL BALAM": "IDPBL",
     "PANGKAL PINANG": "IDPGK",
 
-    # Indonesia - Export ports (Pelabuhan Muat)
+    # Indonesia - Export ports
     "TANJUNG PRIOK": "IDTPP",
     "JAKARTA": "IDTPP",
     "JAKARTA, INDONESIA": "IDTPP",
@@ -297,20 +263,12 @@ PORT_TO_LOCODE: Dict[str, str] = {
     "MOMBASA": "KEMOM",
 }
 
-# Reverse lookup
+# Reverse lookup: LOCODE -> PORT
 LOCODE_TO_PORT: Dict[str, str] = {v: k for k, v in PORT_TO_LOCODE.items()}
 
 
 def get_port_locode(port_name: str) -> Optional[str]:
-    """
-    Map a port name to UN/LOCODE.
-
-    Args:
-        port_name: Port name (e.g., "NINGBO", "Shanghai, China")
-
-    Returns:
-        UN/LOCODE (e.g., "CNNBO") or None if not found
-    """
+    # Map port name ke UN/LOCODE.
     if not port_name:
         return None
 
@@ -334,10 +292,7 @@ def get_port_locode(port_name: str) -> Optional[str]:
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # COUNTRY NAMES → ISO 3166-1 alpha-2
-# ═══════════════════════════════════════════════════════════════════════════════
-
 COUNTRY_TO_ISO2: Dict[str, str] = {
     # East Asia
     "CHINA": "CN",
@@ -356,7 +311,7 @@ COUNTRY_TO_ISO2: Dict[str, str] = {
     "DPRK": "KP",
     "NORTH KOREA": "KP",
 
-    # Southeast Asia
+    # SE Asia
     "INDONESIA": "ID",
     "SINGAPORE": "SG",
     "MALAYSIA": "MY",
@@ -473,17 +428,9 @@ ISO2_TO_COUNTRY: Dict[str, str] = {v: k for k, v in COUNTRY_TO_ISO2.items()}
 
 
 def get_country_code(country_name: str) -> str:
-    """
-    Map a country name to ISO 3166-1 alpha-2 code.
-
-    Args:
-        country_name: Country name (e.g., "CHINA", "Indonesia") or ISO 2-letter code
-
-    Returns:
-        ISO 2-letter code (e.g., "CN", "ID")
-    """
+    # Map country name ke ISO 3166-1 alpha-2 code.
     if not country_name:
-        return "CN"  # Default to China
+        return "CN"
 
     name_upper = country_name.upper().strip()
 
@@ -494,20 +441,15 @@ def get_country_code(country_name: str) -> str:
     if name_upper in COUNTRY_TO_ISO2:
         return COUNTRY_TO_ISO2[name_upper]
 
-    # Partial match — check if country_key is a word-bounded substring of name_upper
-    # or if name_upper is a word-bounded substring of country_key.
     # Use word boundaries to avoid "ID" matching inside "INDONESIA" or "KR" in "UKRAINE".
     for country_key, code in COUNTRY_TO_ISO2.items():
-        # Word-bounded: country_key inside name_upper
         if country_key in name_upper:
-            # Make sure it's a word boundary match (prevents 'ID' in 'INDONESIA')
             start = name_upper.find(country_key)
             before_ok = start == 0 or not name_upper[start - 1].isalpha()
             after_ok = (start + len(country_key) >= len(name_upper) or
                         not name_upper[start + len(country_key)].isalpha())
             if before_ok and after_ok:
                 return code
-        # name_upper inside country_key
         if name_upper in country_key:
             start = country_key.find(name_upper)
             before_ok = start == 0 or not country_key[start - 1].isalpha()
@@ -516,16 +458,12 @@ def get_country_code(country_name: str) -> str:
             if before_ok and after_ok:
                 return code
 
-    return "CN"  # Default fallback
+    return "CN"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # CURRENCY CODES
-# ISO 4217 currency codes
-# ═══════════════════════════════════════════════════════════════════════════════
-
 CURRENCY_TO_ISO4217: Dict[str, str] = {
-    # Clean currency codes
+    # Clean codes
     "USD": "USD",
     "US$": "USD",
     "US DOLLAR": "USD",
@@ -570,7 +508,7 @@ CURRENCY_TO_ISO4217: Dict[str, str] = {
 
 
 def get_currency_code(currency_name: str) -> str:
-    """Map currency name to ISO 4217 code."""
+    # Map currency name ke ISO 4217 code.
     if not currency_name:
         return "USD"
 
@@ -592,10 +530,7 @@ def get_currency_code(currency_name: str) -> str:
     return "USD"
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # INCOTERMS
-# ═══════════════════════════════════════════════════════════════════════════════
-
 INCOTERM_TO_CODE: Dict[str, str] = {
     "EXW": "EXW",  # Ex Works
     "FCA": "FCA",  # Free Carrier
@@ -604,7 +539,7 @@ INCOTERM_TO_CODE: Dict[str, str] = {
     "CFR": "CFR",  # Cost and Freight
     "CIF": "CIF",  # Cost, Insurance and Freight
     "CPT": "CPT",  # Carriage Paid To
-    "CIP": "CIP",   # Carriage and Insurance Paid To
+    "CIP": "CIP",  # Carriage and Insurance Paid To
     "DAP": "DAP",  # Delivered At Place
     "DPU": "DPU",  # Delivered at Place Unloaded
     "DDP": "DDP",  # Delivered Duty Paid
@@ -617,7 +552,7 @@ FOB_INCOTERMS = {"FOB", "FCA", "EXW", "FAS"}
 
 
 def get_incoterm_code(incoterm_name: str) -> Optional[str]:
-    """Map incoterm name to CEISA incoterm code."""
+    # Map incoterm name ke CEISA incoterm code.
     if not incoterm_name:
         return None
 
@@ -634,19 +569,15 @@ def get_incoterm_code(incoterm_name: str) -> Optional[str]:
 
 
 def is_cif_based(incoterm: str) -> bool:
-    """Check if incoterm is CIF-based (freight/insurance already included)."""
+    # Check jika incoterm CIF-based.
     if not incoterm:
         return False
     return incoterm.upper() in CIF_INCOTERMS
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PACKAGING CODES
-# Kode Kemasan berdasarkan BC 2.0 / CEISA 4.0
-# ═══════════════════════════════════════════════════════════════════════════════
-
 PACKAGING_TO_CODE: Dict[str, str] = {
-    # Piece counts
+    # Pieces
     "PIECE": "PCE",
     "PIECES": "PCE",
     "PC": "PCE",
@@ -659,13 +590,13 @@ PACKAGING_TO_CODE: Dict[str, str] = {
     "SET": "SET",
     "SETS": "SET",
 
-    # Length measures
+    # Length
     "METER": "MTR",
     "METERS": "MTR",
     "MTR": "MTR",
     "MT": "MTR",
 
-    # Weight measures
+    # Weight
     "KILOGRAM": "KGM",
     "KILOGRAMS": "KGM",
     "KG": "KGM",
@@ -690,7 +621,7 @@ PACKAGING_TO_CODE: Dict[str, str] = {
     "M3": "MTQ",
     "CBM": "MTQ",
 
-    # Rolls / spools
+    # Rolls/spools
     "ROLL": "ROL",
     "ROLLS": "ROL",
     "SPOOL": "ROL",
@@ -698,7 +629,7 @@ PACKAGING_TO_CODE: Dict[str, str] = {
     "REEL": "ROL",
     "REELS": "ROL",
 
-    # Cartons / boxes
+    # Cartons/boxes
     "CARTON": "CT",
     "CARTONS": "CT",
     "CTN": "CT",
@@ -712,14 +643,14 @@ PACKAGING_TO_CODE: Dict[str, str] = {
     "PALLETS": "TDP",
     "FLAT PALLET": "TDP",
 
-    # Drums / barrels
+    # Drums/barrels
     "DRUM": "DRM",
     "DRUMS": "DRM",
     "BARREL": "DRM",
     "BARRELS": "DRM",
     "STEEL DRUM": "DRM",
 
-    # Bags / sacks
+    # Bags/sacks
     "BAG": "BAG",
     "BAGS": "BAG",
     "SACK": "BAG",
@@ -732,7 +663,7 @@ PACKAGING_TO_CODE: Dict[str, str] = {
     "CRATE": "CRD",
     "CRATES": "CRD",
 
-    # Container types (for KONTAINER sheet)
+    # Container types
     "20FT": "20",
     "40FT": "40",
     "40HQ": "40",
@@ -742,15 +673,7 @@ PACKAGING_TO_CODE: Dict[str, str] = {
 
 
 def get_packaging_code(packaging_name: str) -> str:
-    """
-    Map packaging name to CEISA packaging code.
-
-    Args:
-        packaging_name: Packaging description (e.g., "Cartons", "KG", "Rolls")
-
-    Returns:
-        CEISA packaging code (e.g., "CT", "KGM", "ROL")
-    """
+    # Map packaging name ke CEISA packaging code.
     if not packaging_name:
         return "PCE"
 
@@ -763,35 +686,31 @@ def get_packaging_code(packaging_name: str) -> str:
         if pkg_key in name_upper:
             return code
 
-    return "PCE"  # Default to pieces
+    return "PCE"  # Default pieces
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # ENTITY TYPES → CEISA Entity Codes
-# KODE ENTITAS for ENTITAS sheet
-# ═══════════════════════════════════════════════════════════════════════════════
-
 ENTITY_TYPE_CODES: Dict[str, int] = {
-    # Importir / Buyer
+    # Buyer
     "buyer": 1,
     "importer": 1,
     "penerima": 1,
 
-    # Eksportir / Seller
+    # Seller
     "seller": 9,
     "exporter": 9,
     "pengirim": 9,
 
-    # Produsen / Manufacturer
+    # Manufacturer
     "manufacturer": 10,
     "produsen": 10,
     "pabrik": 10,
 
-    # Shipper / Pengirim Barang
+    # Shipper
     "shipper": 7,
     "pengirim_barang": 7,
 
-    # Notify Party
+    # Notify
     "notify": 4,
     "notify_party": 4,
     "notifyparty": 4,
@@ -803,9 +722,9 @@ ENTITY_TYPE_CODES: Dict[str, int] = {
 
 
 def get_entity_type_code(entity_type: str) -> int:
-    """Map entity type to CEISA KODE ENTITAS."""
+    # Map entity type ke CEISA KODE ENTITAS.
     if not entity_type:
-        return 1  # Default to importer
+        return 1  # Default importer
 
     name_upper = entity_type.lower().strip()
 

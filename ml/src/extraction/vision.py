@@ -1,19 +1,3 @@
-"""
-VisionModelExtractor — GPT-4o / Multi-modal LLM extraction for trade documents.
-
-Uses a Vision LLM to directly parse Commercial Invoices, Bills of Lading,
-and Packing Lists from images, extracting structured CEISA 4.0 data.
-
-API: OpenAI-compatible (adaCODE platform, or any OAI-compatible endpoint).
-     Set OPENAI_API_KEY or ADACODE_API_KEY environment variable.
-
-Strategy (used as hybrid layer 2.5):
-  1. First run: OCR + LayoutXLM + Pattern (existing pipeline)
-  2. Vision check: If confidence < threshold OR items < 3, call Vision LLM
-  3. Vision fusion: Merge Vision results into existing entities
-  4. Fallback: If API unavailable, continue with existing extraction
-"""
-
 from __future__ import annotations
 
 import base64
@@ -31,23 +15,18 @@ from .items import ItemEntity
 
 logger = logging.getLogger(__name__)
 
-# ── API Configuration ────────────────────────────────────────────────────────
-
+# API CONFIGURATION
 DEFAULT_API_BASE = "https://api.adacode.ai/v1"
 DEFAULT_MODEL = "gpt-4o"
 DEFAULT_API_KEY_ENV = "ADACODE_API_KEY"
 FALLBACK_API_KEY_ENV = "OPENAI_API_KEY"
 
-# ── Extraction confidence threshold ───────────────────────────────────────────
+# Extraction confidence threshold
+MIN_ITEMS_THRESHOLD = 3
+MIN_CONFIDENCE_THRESHOLD = 0.3
 
-MIN_ITEMS_THRESHOLD = 3        # Minimum items before calling Vision
-MIN_CONFIDENCE_THRESHOLD = 0.3 # Minimum avg confidence before calling Vision
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT — Indonesian Customs / CEISA 4.0 Optimized
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# SYSTEM PROMPT
 SYSTEM_PROMPT = """You are an expert Indonesian customs data extraction specialist for CEISA 4.0.
 
 Given a scanned Commercial Invoice, Bill of Lading, or Packing List, extract ALL information
@@ -153,13 +132,9 @@ IMPORTANT:
 """
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# RESULT TYPES
-# ═══════════════════════════════════════════════════════════════════════════════
-
 @dataclass
 class VisionExtractionResult:
-    """Result from VisionModelExtractor."""
+    # Result dari VisionModelExtractor.
     invoice_number: Optional[str] = None
     invoice_date: Optional[str] = None
     bl_number: Optional[str] = None
@@ -199,28 +174,8 @@ class VisionExtractionResult:
         return d
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# VISION MODEL EXTRACTOR
-# ═══════════════════════════════════════════════════════════════════════════════
-
 class VisionModelExtractor:
-    """
-    Vision-based extraction using GPT-4o or compatible multi-modal API.
-
-    Features:
-      - OpenAI-compatible API (adaCODE, OpenAI, Azure, etc.)
-      - Structured JSON output optimized for Indonesian customs (CEISA 4.0)
-      - Per-document-type prompts (CI, BL, PL)
-      - Batch processing for multiple pages
-      - Graceful fallback when API unavailable
-      - Cost estimation
-
-    Usage:
-        extractor = VisionModelExtractor(api_key="sk-...")
-        result = extractor.extract_from_image("invoice.png", doc_type="CI")
-        print(result.invoice_number)
-    """
-
+    # Vision-based extraction using GPT-4o.
     def __init__(
         self,
         api_key: Optional[str] = None,
@@ -230,15 +185,6 @@ class VisionModelExtractor:
         max_retries: int = 2,
         confidence_threshold: float = 0.0,
     ):
-        """
-        Args:
-            api_key: API key. Reads from ADACODE_API_KEY / OPENAI_API_KEY env if None.
-            api_base: API base URL. Defaults to adaCODE platform.
-            model: Model name (gpt-4o, gpt-4o-mini, etc.)
-            timeout: Request timeout in seconds.
-            max_retries: Number of retries on API errors.
-            confidence_threshold: Minimum confidence to accept results.
-        """
         self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
@@ -269,7 +215,6 @@ class VisionModelExtractor:
 
     @property
     def available(self) -> bool:
-        """True if API key is configured."""
         return self._available
 
     def extract_from_image(
@@ -278,17 +223,6 @@ class VisionModelExtractor:
         doc_type: str = "CI",
         extra_instructions: str = "",
     ) -> VisionExtractionResult:
-        """
-        Extract structured data from a single image.
-
-        Args:
-            image_path: Path to the image file (PNG, JPG, etc.)
-            doc_type: Document type ("CI", "BL", "PL") for specialized prompts.
-            extra_instructions: Additional instructions to append to system prompt.
-
-        Returns:
-            VisionExtractionResult with all extracted fields.
-        """
         if not self._available:
             logger.debug("VisionModelExtractor not available (no API key)")
             return VisionExtractionResult()
@@ -299,7 +233,6 @@ class VisionModelExtractor:
             logger.error(f"Image not found: {image_path}")
             return VisionExtractionResult()
 
-        # Encode image as base64
         try:
             with open(path, "rb") as f:
                 img_data = base64.b64encode(f.read()).decode("utf-8")
@@ -307,7 +240,6 @@ class VisionModelExtractor:
             logger.error(f"Failed to encode image {image_path}: {e}")
             return VisionExtractionResult()
 
-        # Build user prompt
         doc_label = {
             "CI": "Commercial Invoice",
             "BL": "Bill of Lading",
@@ -323,7 +255,6 @@ Filename: {path.name}
 
 Return the JSON object now:"""
 
-        # Build messages
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -344,7 +275,6 @@ Return the JSON object now:"""
             },
         ]
 
-        # Call API with retries
         result = self._call_api(messages)
 
         if result is None:
@@ -360,19 +290,6 @@ Return the JSON object now:"""
         doc_types: Optional[List[str]] = None,
         extra_instructions: str = "",
     ) -> VisionExtractionResult:
-        """
-        Extract from multiple images in a single API call (batch).
-
-        Useful when CI + PL are separate images but should be processed together.
-
-        Args:
-            image_paths: List of image file paths.
-            doc_types: List of document types (same length as image_paths).
-            extra_instructions: Additional instructions.
-
-        Returns:
-            VisionExtractionResult with combined data from all images.
-        """
         if not self._available:
             return VisionExtractionResult()
 
@@ -434,7 +351,6 @@ Return the JSON object now:"""
         self,
         messages: List[Dict[str, Any]],
     ) -> Optional[VisionExtractionResult]:
-        """Call the OpenAI-compatible API with retries."""
         url = f"{self.api_base}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -443,7 +359,7 @@ Return the JSON object now:"""
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": 0.1,  # Low temperature for structured extraction
+            "temperature": 0.1,
             "max_tokens": 4096,
             "response_format": {"type": "json_object"},
         }
@@ -489,7 +405,7 @@ Return the JSON object now:"""
         return None
 
     def _parse_response(self, content: str) -> Optional[VisionExtractionResult]:
-        """Parse API response content into VisionExtractionResult."""
+        # Parse response ke VisionExtractionResult.
         # Try direct JSON parse
         try:
             raw = json.loads(content)
@@ -503,7 +419,6 @@ Return the JSON object now:"""
                 except json.JSONDecodeError:
                     pass
             else:
-                # Try to find JSON object in content
                 start = content.find("{")
                 end = content.rfind("}") + 1
                 if start >= 0 and end > start:
@@ -518,7 +433,6 @@ Return the JSON object now:"""
 
         # Map to VisionExtractionResult
         try:
-            # Parse items
             items = []
             for item_data in raw.get("items") or []:
                 item = ItemEntity(
@@ -580,25 +494,14 @@ Return the JSON object now:"""
         num_images: int,
         model: Optional[str] = None,
     ) -> float:
-        """
-        Estimate API cost for a given number of images.
-
-        Args:
-            num_images: Number of images to process.
-            model: Model name (uses self.model if None).
-
-        Returns:
-            Estimated cost in USD (approximate).
-        """
+        # Estimate API cost.
         m = model or self.model
 
-        # Pricing per 1000 tokens (approximate, adaCODE/ OpenAI GPT-4o)
         cost_per_1k_input_tokens = 0.005   # GPT-4o
         cost_per_1k_output_tokens = 0.015
 
-        # Estimate tokens per image
-        estimated_input_tokens = 2500 * num_images  # system prompt + image tokens
-        estimated_output_tokens = 1500  # structured JSON output
+        estimated_input_tokens = 2500 * num_images
+        estimated_output_tokens = 1500
 
         total = (
             (estimated_input_tokens / 1000) * cost_per_1k_input_tokens * num_images

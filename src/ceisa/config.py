@@ -1,9 +1,3 @@
-"""
-CEISA 4.0 API Configuration.
-
-Manages environment-specific URLs and credentials.
-"""
-
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -11,22 +5,21 @@ from typing import Optional
 
 @dataclass
 class CeisaConfig:
-    """CEISA 4.0 API configuration."""
 
-    # ── Environment ─────────────────────────────────────────────────────────
-    env: str = "dev"  # "dev" or "prod"
+    # Environment
+    env: str = "dev"
 
-    # ── Base URLs ────────────────────────────────────────────────────────────
+    # Base URLs
     auth_url: str = "https://apisdev-gw.beacukai.go.id/nle-oauth/v1/user/login"
     api_base_url: str = "https://apisdev-gw.beacukai.go.id/openapi"
     document_url: str = "https://apisdev-gw.beacukai.go.id/openapi/document"
 
-    # ── Credentials (set via environment or .env) ────────────────────────────
+    # Credentials (set via .env)
     username: str = ""
     password: str = ""
 
-    # ── Token settings ──────────────────────────────────────────────────────
-    token_expires_in: int = 900  # seconds (from API response)
+    # Token setting
+    token_expires_in: int = 900
 
     def __post_init__(self):
         # Allow override via environment variables
@@ -42,9 +35,8 @@ class CeisaConfig:
 
     @property
     def is_configured(self) -> bool:
-        """Return True if credentials are set."""
         return bool(self.username and self.password)
 
 
-# ── Singleton config instance ────────────────────────────────────────────────────
+# Singleton config instance
 config = CeisaConfig()

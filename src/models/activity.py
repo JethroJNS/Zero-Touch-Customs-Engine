@@ -1,6 +1,3 @@
-"""
-Activity / Audit Log SQLAlchemy model.
-"""
 import enum
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Text
@@ -8,7 +5,6 @@ from .shipment import Base
 
 
 def get_local_time():
-    """Get current time in Asia/Jakarta timezone (WIB, UTC+7)."""
     from zoneinfo import ZoneInfo
     jakarta_tz = ZoneInfo("Asia/Jakarta")
     return datetime.now(jakarta_tz).replace(tzinfo=None)

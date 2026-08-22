@@ -1,6 +1,3 @@
-"""
-Routes package.
-"""
 from .shipments import router as shipments_router
 from .activities import router as activities_router
 from .dashboard import router as dashboard_router

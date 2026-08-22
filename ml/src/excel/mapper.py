@@ -1,23 +1,13 @@
-"""
-CEISA Entity-to-Excel Column Mapper.
-
-Maps canonical entity names → CEISA 4.0 Excel sheet + column names.
-Also provides reverse mapping (column → entity) and metadata per field.
-
-This module is the single source of truth for all entity-to-column mappings.
-Used by: ExcelExporter, extraction layers, validation layer.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-# ── Field metadata ──────────────────────────────────────────────────────────
+# FIELD METADATA
 
 @dataclass(frozen=True)
 class FieldMeta:
-    """Metadata for a single CEISA field."""
+    """Metadata untuk satu field CEISA."""
     entity_name: str
     sheet: str
     excel_col: str
@@ -25,11 +15,11 @@ class FieldMeta:
     default: Optional[str] = None
     data_type: str = "text"  # text | number | date | code | currency
     validators: Tuple[str, ...] = ()
-    ceisa_code: Optional[str] = None  # e.g. "KODE PELABUHAN MUAT"
+    ceisa_code: Optional[str] = None  # contoh "KODE PELABUHAN MUAT"
 
 
 FIELD_METADATA: Dict[str, FieldMeta] = {
-    # ── HEADER ──────────────────────────────────────────────────────────────
+    # HEADER
     "nomor_aju":              FieldMeta("shipment_id",     "HEADER",         "NOMOR AJU",               required=True,  data_type="text"),
     "kode_kantor":            FieldMeta("kode_kantor",    "HEADER",         "KODE KANTOR",             default="040300"),
     "kode_dokumen":           FieldMeta("kode_dokumen",   "HEADER",         "KODE DOKUMEN",            default="20"),
@@ -57,7 +47,7 @@ FIELD_METADATA: Dict[str, FieldMeta] = {
     "kode_guna_barang":       FieldMeta("guna_barang",     "HEADER",        "KODE GUNA BARANG",        default="KMD"),
     "kode_asal_barang":       FieldMeta("country_of_origin","HEADER",       "KODE ASAL BARANG",        default="1"),
     "flag_proporsional_netto":FieldMeta("prop_netto",      "HEADER",        "FLAG PROPORSIONAL NETTO", default="T"),
-    # ── ENTITAS ─────────────────────────────────────────────────────────────
+    # ENTITAS
     "entitas_nomor_aju":      FieldMeta("shipment_id",     "ENTITAS",       "NOMOR AJU"),
     "entitas_seri":          FieldMeta("seri_entitas",     "ENTITAS",       "SERI"),
     "entitas_kode":          FieldMeta("kode_entitas",     "ENTITAS",       "KODE ENTITAS"),
@@ -67,24 +57,24 @@ FIELD_METADATA: Dict[str, FieldMeta] = {
     "entitas_nomor_identitas":FieldMeta("npwp",            "ENTITAS",       "NOMOR IDENTITAS"),
     "entitas_nib":           FieldMeta("nib",              "ENTITAS",       "NIB ENTITAS"),
     "entitas_api":           FieldMeta("kode_api",         "ENTITAS",       "KODE JENIS API"),
-    # ── DOKUMEN ─────────────────────────────────────────────────────────────
+    # DOKUMEN
     "dokumen_nomor_aju":     FieldMeta("shipment_id",     "DOKUMEN",       "NOMOR AJU"),
     "dokumen_seri":         FieldMeta("seri_dokumen",     "DOKUMEN",       "SERI"),
     "dokumen_kode":         FieldMeta("kode_dokumen",     "DOKUMEN",       "KODE DOKUMEN"),
     "dokumen_nomor":        FieldMeta("nomor_dokumen",    "DOKUMEN",       "NOMOR DOKUMEN"),
     "dokumen_tanggal":      FieldMeta("tanggal_dokumen",  "DOKUMEN",       "TANGGAL DOKUMEN"),
-    # ── PENGANGKUT ─────────────────────────────────────────────────────────
+    # PENGANGKUT
     "angkut_nomor_aju":      FieldMeta("shipment_id",     "PENGANGKUT",    "NOMOR AJU"),
     "angkut_seri":          FieldMeta("seri_angkut",     "PENGANGKUT",    "SERI"),
     "angkut_cara":          FieldMeta("cara_angkut",     "PENGANGKUT",    "KODE CARA ANGKUT",       default="1"),
     "angkut_nama":          FieldMeta("vessel_name",     "PENGANGKUT",    "NAMA PENGANGKUT"),
     "angkut_nomor":        FieldMeta("voyage_number",   "PENGANGKUT",    "NOMOR PENGANGKUT"),
-    # ── KEMASAN ─────────────────────────────────────────────────────────────
+    # KEMASAN
     "kemasan_nomor_aju":     FieldMeta("shipment_id",     "KEMASAN",       "NOMOR AJU"),
     "kemasan_seri":         FieldMeta("seri_kemasan",    "KEMASAN",       "SERI"),
     "kemasan_kode":         FieldMeta("packaging_type",  "KEMASAN",       "KODE KEMASAN"),
     "kemasan_jumlah":       FieldMeta("number_of_packages","KEMASAN",     "JUMLAH KEMASAN",         data_type="number"),
-    # ── KONTAINER ───────────────────────────────────────────────────────────
+    # KONTAINER
     "kontainer_nomor_aju":   FieldMeta("shipment_id",     "KONTAINER",     "NOMOR AJU"),
     "kontainer_seri":       FieldMeta("seri_kontainer",  "KONTAINER",     "SERI"),
     "kontainer_nomor":      FieldMeta("container_numbers","KONTAINER",     "NOMOR KONTINER"),
@@ -92,12 +82,12 @@ FIELD_METADATA: Dict[str, FieldMeta] = {
     "kontainer_jenis":      FieldMeta("container_type",  "KONTAINER",     "KODE JENIS KONTAINER",    default="8"),
     "kontainer_tipe":       FieldMeta("container_tipe",  "KONTAINER",     "KODE TIPE KONTAINER",     default="1"),
     "kontainer_segel":      FieldMeta("seal_numbers",    "KONTAINER",     "NOMOR SEGEL"),
-    # ── KOMPONENBIAYA ───────────────────────────────────────────────────────
+    # KOMPONENBIAYA
     "biaya_nomor_aju":      FieldMeta("shipment_id",     "KOMPONENBIAYA", "NOMOR AJU"),
     "biaya_jenis":         FieldMeta("jenis_nilai",     "KOMPONENBIAYA", "JENIS NILAI",            default="1"),
     "biaya_invoice":       FieldMeta("total_amount",    "KOMPONENBIAYA", "HARGA INVOICE",          data_type="currency"),
     "biaya_transport":     FieldMeta("freight",         "KOMPONENBIAYA", "BIAYA TRANSPORTASI",     data_type="currency"),
-    # ── BARANG ──────────────────────────────────────────────────────────────
+    # BARANG
     "barang_nomor_aju":     FieldMeta("shipment_id",     "BARANG",        "NOMOR AJU"),
     "barang_seri":         FieldMeta("seri_barang",     "BARANG",        "SERI BARANG"),
     "barang_hs":           FieldMeta("item_hs_code",    "BARANG",        "HS"),
@@ -126,20 +116,19 @@ FIELD_METADATA: Dict[str, FieldMeta] = {
     "barang_kondisi":      FieldMeta("kondisi_barang",  "BARANG",        "KODE KONDISI BARANG",    default="1"),
     "barang_metode":       FieldMeta("metode_nilai",    "BARANG",        "METODE PENENTUAN NILAI", default="Metode 1"),
     "barang_statement":    FieldMeta("statement_harga","BARANG",         "STATEMENT PERBEDAAN HARGA", default="T"),
-    # ── PUNGUTAN ─────────────────────────────────────────────────────────────
+    # PUNGUTAN
     "pungutan_nomor_aju":   FieldMeta("shipment_id",     "PUNGUTAN",      "NOMOR AJU"),
     "pungutan_fasilitas":   FieldMeta("fasilitas_tarif", "PUNGUTAN",      "KODE FASILITAS TARIF",   default="1"),
     "pungutan_jenis":       FieldMeta("jenis_pungutan",  "PUNGUTAN",      "KODE JENIS PUNGUTAN",    default="PPN"),
-    # ── VERSI ─────────────────────────────────────────────────────────────────
+    # VERSI
     "versi_nomor_aju":      FieldMeta("shipment_id",     "VERSI",         "NOMOR AJU"),
     "versi_value":          FieldMeta("versi",            "VERSI",         "VERSION",                 default="1.3"),
 }
 
 
-# ── Reverse mapping ──────────────────────────────────────────────────────────
+# REVERSE MAPPING
 
 def get_sheet_fields(sheet: str) -> List[Tuple[str, FieldMeta]]:
-    """Get all fields for a given sheet, in logical order."""
     return [
         (key, meta) for key, meta in FIELD_METADATA.items()
         if meta.sheet == sheet
@@ -147,7 +136,6 @@ def get_sheet_fields(sheet: str) -> List[Tuple[str, FieldMeta]]:
 
 
 def get_entity_fields(entity_name: str) -> List[Tuple[str, FieldMeta]]:
-    """Get all CEISA fields mapped to an entity."""
     return [
         (key, meta) for key, meta in FIELD_METADATA.items()
         if meta.entity_name == entity_name
@@ -155,7 +143,6 @@ def get_entity_fields(entity_name: str) -> List[Tuple[str, FieldMeta]]:
 
 
 def get_sheet_names() -> List[str]:
-    """Get all CEISA sheet names in document order."""
     seen: Set[str] = set()
     result: List[str] = []
     for meta in FIELD_METADATA.values():
@@ -166,11 +153,10 @@ def get_sheet_names() -> List[str]:
 
 
 def get_required_fields() -> List[str]:
-    """Get all required field keys."""
     return [k for k, m in FIELD_METADATA.items() if m.required]
 
 
-# ── Validation rules ─────────────────────────────────────────────────────────
+# VALIDATION RULES
 
 HS_CODE_REGEX = r"^\d{8,13}$"
 DATE_REGEX = r"^\d{4}-\d{2}-\d{2}$"

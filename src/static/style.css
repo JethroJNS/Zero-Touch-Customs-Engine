@@ -1,4 +1,4 @@
-/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+/* Reset & Base */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -57,13 +57,13 @@ body {
   min-height: 100vh;
 }
 
-/* ── App Layout (Sidebar) ─────────────────────────────────────────────────── */
+/* App Layout (Sidebar) */
 .app-layout {
   display: flex;
   min-height: 100vh;
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+/* Sidebar */
 .sidebar {
   width: 260px;
   background: var(--sidebar-bg);
@@ -111,7 +111,7 @@ body {
   font-weight: 500;
 }
 
-/* ── Sidebar Navigation ──────────────────────────────────────────────────── */
+/* Sidebar Navigation */
 .sidebar-nav {
   flex: 1;
   padding: 16px 12px;
@@ -153,7 +153,7 @@ body {
   color: var(--sidebar-active);
 }
 
-/* ── Sidebar Footer ─────────────────────────────────────────────────────── */
+/* Sidebar Footer */
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid rgba(255,255,255,0.1);
@@ -179,7 +179,7 @@ body {
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
 
-/* ── Main Content ───────────────────────────────────────────────────────── */
+/* Main Content */
 .main-content {
   flex: 1;
   margin-left: 260px;
@@ -190,7 +190,7 @@ body {
   min-height: 100vh;
 }
 
-/* ── Upload Section ──────────────────────────────────────────────────────── */
+/* Upload Section */
 .upload-section {
   background: var(--surface);
   border-radius: var(--radius-lg);
@@ -216,7 +216,7 @@ body {
   line-height: 1.6;
 }
 
-/* ── AJU Input Section ────────────────────────────────────────────────────── */
+/* AJU Input Section */
 .aju-input-section {
   margin-bottom: 24px;
   padding: 20px 24px;
@@ -274,7 +274,7 @@ body {
   color: var(--text-muted);
 }
 
-/* ── Document Cards ───────────────────────────────────────────────────────── */
+/* Document Cards */
 .doc-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -324,7 +324,7 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* ── Drop Zone ───────────────────────────────────────────────────────────── */
+/* Drop Zone */
 .drop-zone {
   padding: 20px 16px;
   cursor: pointer;
@@ -376,12 +376,12 @@ body {
   color: var(--text-muted);
 }
 
-/* ── File Input (hidden) ─────────────────────────────────────────────────── */
+/* File Input (hidden) */
 .file-input-hidden {
   display: none;
 }
 
-/* ── File Preview ────────────────────────────────────────────────────────── */
+/* File Preview */
 .file-preview {
   display: flex;
   align-items: center;
@@ -438,7 +438,7 @@ body {
   height: 14px;
 }
 
-/* ── Progress Section ────────────────────────────────────────────────────── */
+/* Progress Section */
 .progress-section {
   background: linear-gradient(135deg, #f8faff 0%, #eff6ff 100%);
   border-radius: var(--radius-lg);
@@ -587,7 +587,7 @@ body {
   color: var(--primary);
 }
 
-/* ── Action Row ───────────────────────────────────────────────────────────── */
+/* Action Row */
 .action-row {
   display: flex;
   align-items: center;
@@ -651,7 +651,7 @@ body {
   height: 18px;
 }
 
-/* ── Save Button ──────────────────────────────────────────────────────────── */
+/* Save Button */
 .save-btn {
   display: inline-flex;
   align-items: center;
@@ -681,7 +681,7 @@ body {
   cursor: not-allowed;
 }
 
-/* ── Spinner ─────────────────────────────────────────────────────────────── */
+/* Spinner */
 .spinner {
   width: 18px;
   height: 18px;
@@ -695,7 +695,7 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* ── Status Section ──────────────────────────────────────────────────────── */
+/* Status Section */
 .status-section {
   animation: slideIn 0.25s ease-out;
 }
@@ -750,7 +750,7 @@ body {
   line-height: 1.5;
 }
 
-/* ── Results Section ─────────────────────────────────────────────────────── */
+/* Results Section */
 .results-section {
   background: var(--surface);
   border-radius: var(--radius-lg);
@@ -866,7 +866,7 @@ body {
   transition: width 0.6s ease;
 }
 
-/* ── Field Analysis ─────────────────────────────────────────────────────── */
+/* Field Analysis */
 .field-analysis {
   margin-top: 24px;
   padding-top: 24px;
@@ -942,7 +942,7 @@ body {
   color: #991b1b;
 }
 
-/* ── Line Items Table ─────────────────────────────────────────────────────── */
+/* Line Items Table */
 .line-items-section {
   margin-top: 24px;
   padding-top: 24px;
@@ -992,7 +992,7 @@ body {
   background: #fafcff;
 }
 
-/* ── Quality Warnings ────────────────────────────────────────────────────── */
+/* Quality Warnings */
 .quality-warnings {
   margin-top: 24px;
   padding-top: 24px;
@@ -1033,7 +1033,7 @@ body {
   margin-top: 1px;
 }
 
-/* ── Responsive ───────────────────────────────────────────────────────────── */
+/* Responsive */
 @media (max-width: 1200px) {
   .results-grid {
     grid-template-columns: repeat(2, 1fr);

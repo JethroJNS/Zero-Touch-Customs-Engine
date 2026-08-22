@@ -1,7 +1,3 @@
-"""
-Models package.
-Exports Shipment and Activity models for use across the application.
-"""
 from .shipment import Base, Shipment, ShipmentStatus, get_local_time
 from .activity import Activity, ActivityAction
 
