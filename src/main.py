@@ -69,11 +69,13 @@ def create_app() -> FastAPI:
     from routes.activities import router as activities_router
     from routes.dashboard import router as dashboard_router
     from routes.pages import router as pages_router
+    from routes.ceisa_routes import router as ceisa_router
 
     app.include_router(shipments_router)
     app.include_router(activities_router)
     app.include_router(dashboard_router)
     app.include_router(pages_router)
+    app.include_router(ceisa_router)
 
     # Health check
     @app.get("/health", tags=["health"])

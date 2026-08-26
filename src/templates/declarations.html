@@ -244,6 +244,14 @@
       background: rgba(56,161,105,0.1);
     }
 
+    .action-btn.preview-ceisa {
+      color: var(--accent, #6366f1);
+    }
+
+    .action-btn.preview-ceisa:hover {
+      background: rgba(99,102,241,0.1);
+    }
+
     .action-btn.delete {
       color: var(--error);
     }
@@ -262,6 +270,62 @@
       text-align: center;
       padding: 60px 20px;
       color: var(--text-secondary);
+    }
+
+    /* CEISA Host-to-Host */
+    .ceisa-id-tag {
+      font-size: 10px;
+      color: var(--accent, #6366f1);
+      font-family: monospace;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+
+    .ceisa-preview .preview-header {
+      margin-bottom: 16px;
+    }
+
+    .ceisa-preview .preview-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .ceisa-preview .preview-meta code {
+      background: rgba(99,102,241,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--accent, #6366f1);
+    }
+
+    .ceisa-preview .preview-doc {
+      background: var(--bg-secondary, #1e1e2e);
+      border-radius: 8px;
+      padding: 16px;
+      max-height: 400px;
+      overflow: auto;
+      margin-bottom: 16px;
+    }
+
+    .ceisa-preview .preview-doc pre {
+      margin: 0;
+      font-size: 11px;
+      color: #cdd6f4;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .ceisa-preview .preview-note {
+      font-size: 12px;
+      color: var(--warning, #f59e0b);
+      text-align: center;
     }
 
     .empty-state-icon {
@@ -892,7 +956,10 @@
               </div>
             </div>
           </td>
-          <td><span class="status-badge status-${s.status?.toLowerCase().replace(/\s+/g, '-')}">${s.status || '-'}</span></td>
+          <td>
+            <span class="status-badge status-${s.status?.toLowerCase().replace(/\s+/g, '-')}">${s.status || '-'}</span>
+            ${s.ceisa_id_header ? `<div class="ceisa-id-tag">CEISA: ${s.ceisa_id_header}</div>` : ''}
+          </td>
           <td>${s.updated_at ? formatDateTime(s.updated_at) : '-'}</td>
           <td>
             <div class="action-buttons">
@@ -902,11 +969,19 @@
                   <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
                 </svg>
               </button>
-              ${s.status === 'Draft Valid' ? `
-                <button class="action-btn send" onclick="sendShipment(${s.id})" title="Send">
+              ${s.status === 'Draft Valid' || s.status === 'Draft Invalid' ? `
+                <button class="action-btn send" onclick="sendShipment(${s.id})" title="Kirim ke CEISA 4.0">
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     <polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              ` : ''}
+              ${s.status === 'Sent' && s.ceisa_id_header ? `
+                <button class="action-btn preview-ceisa" onclick="previewCeisa(${s.id})" title="Preview CEISA JSON">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
                   </svg>
                 </button>
               ` : ''}
@@ -1053,27 +1128,64 @@
       }
     });
 
-    // Send shipment
+    // Send shipment to CEISA 4.0
     async function sendShipment(id) {
       showConfirmModal(
-        'Send Declaration',
-        'Mark this shipment as Sent? This action cannot be undone.',
-        'Send',
+        'Kirim ke CEISA 4.0',
+        'Kirim declaration ini ke sistem CEISA 4.0 via Host-to-Host? Pastikan data sudah benar karena tidak dapat dibatalkan.',
+        'Kirim',
         'primary',
         async () => {
           try {
             const response = await fetch(`/api/shipments/${id}/send`, { method: 'POST' });
+            const data = await response.json();
             if (response.ok) {
-              showToast('Shipment marked as Sent', 'success');
+              showToast(`Berhasil dikirim ke CEISA! idHeader: ${data.ceisa_id_header || 'N/A'}`, 'success');
               loadShipments();
             } else {
-              throw new Error('Failed to send');
+              const msg = data.detail?.message || data.detail || 'Gagal mengirim ke CEISA';
+              showToast(msg, 'error');
             }
           } catch (error) {
-            showToast('Failed to send shipment', 'error');
+            showToast('Gagal mengirim shipment ke CEISA', 'error');
           }
         }
       );
+    }
+
+    // Preview CEISA JSON document
+    async function previewCeisa(id) {
+      try {
+        const response = await fetch(`/api/ceisa/preview/${id}`);
+        if (!response.ok) throw new Error('Failed');
+        const data = await response.json();
+        showCeisaPreviewModal(data);
+      } catch (error) {
+        showToast('Gagal preview CEISA', 'error');
+      }
+    }
+
+    // Show CEISA preview modal
+    function showCeisaPreviewModal(data) {
+      const content = document.getElementById('modal-content');
+      content.innerHTML = `
+        <div class="ceisa-preview">
+          <div class="preview-header">
+            <h3>Preview CEISA 4.0 JSON</h3>
+            <div class="preview-meta">
+              <span><strong>Shipment:</strong> ${data.reference_code}</span>
+              <span><strong>Nomor Aju:</strong> <code>${data.nomorAju}</code></span>
+              <span><strong>Items:</strong> ${data.items_count}</span>
+            </div>
+          </div>
+          <div class="preview-doc">
+            <pre>${JSON.stringify(data.document, null, 2)}</pre>
+          </div>
+          <div class="preview-note">⚠️ Ini hanya preview. Data BELUM dikirim ke CEISA.</div>
+        </div>
+      `;
+      document.getElementById('modal-title').textContent = 'Preview CEISA 4.0';
+      openModal();
     }
 
     // Delete shipment

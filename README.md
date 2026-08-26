@@ -283,6 +283,59 @@ Seed sample shipment records ke database.
 ### `POST /api/seed/activities`
 Seed sample activity records ke database (selalu replace data lama).
 
+## CEISA 4.0 Host-to-Host Integration
+
+Integrasi Host-to-Host dengan sistem CEISA 4.0 Bea Cukai Indonesia. Submission PIB/PEB dilakukan langsung dari aplikasi ke API CEISA.
+
+### Prasyarat
+
+1. **Daftar di Portal CEISA**: https://portal-dev.beacukai.go.id (dev) atau https://portal.beacukai.go.id (prod)
+2. **Set variabel environment** di `.env`:
+
+```bash
+CEISA_ENV=dev                    # dev (testing) atau prod (production)
+CEISA_USERNAME=your_username
+CEISA_PASSWORD=your_password
+```
+
+### CEISA API Endpoints
+
+### `GET /api/ceisa/config`
+Cek apakah CEISA sudah dikonfigurasi.
+
+### `POST /api/ceisa/submit/{shipment_id}`
+Kirim declaration ke CEISA 4.0 via Host-to-Host API. Return `idHeader` CEISA jika sukses.
+
+### `GET /api/ceisa/status/{id_header}`
+Cek status processing dokumen CEISA (billing/SPPB/NPE).
+
+### `GET /api/ceisa/preview/{shipment_id}`
+Preview JSON CEISA yang akan dikirim — tanpa actual API call. Berguna untuk validasi data sebelum submit.
+
+### `POST /api/ceisa/validate/{shipment_id}`
+Validasi data declaration tanpa submit ke CEISA.
+
+### `POST /api/shipments/{id}/send`
+Alias untuk CEISA submit. Tombol "Send" di halaman Declarations menggunakan endpoint ini.
+
+### CEISA Flow
+
+```
+Dokumen CI/PL/BL
+    ↓
+Ekstraksi (LayoutLMv3 + Pattern)
+    ↓
+Shipment tersimpan di database
+    ↓
+POST /api/ceisa/submit/{id}
+    ↓
+CEISA API (auth → submit PIB → get idHeader)
+    ↓
+idHeader tersimpan, status = "Sent"
+    ↓
+GET /api/ceisa/status/{idHeader} → Cek billing/SPPB
+```
+
 ## Variabel Environment
 
 Salin `.env` dari template dan konfigurasi:
@@ -295,6 +348,9 @@ Salin `.env` dari template dan konfigurasi:
 | `POSTGRES_PASSWORD` | Password database | `postgres` |
 | `MODEL_PATH` | Path model LayoutLMv3 | `ml/models/layoutlmv3-v4/best_model` |
 | `APP_PORT` | Port aplikasi | `8000` |
+| `CEISA_ENV` | Environment: `dev` (testing) atau `prod` (production) | `dev` |
+| `CEISA_USERNAME` | Username portal CEISA (register di portal-beacukai) | (kosong) |
+| `CEISA_PASSWORD` | Password portal CEISA | (kosong) |
 
 ## Jalankan Tanpa Docker
 

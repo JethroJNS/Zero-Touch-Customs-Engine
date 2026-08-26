@@ -165,6 +165,7 @@ async def get_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
         "extraction_confidence": round(s.extraction_confidence * 100) if s.extraction_confidence else 0,
         "quality_score": s.quality_score,
         "status": s.status.value if s.status else None,
+        "ceisa_id_header": s.ceisa_id_header,
         "header_fields": json.loads(s.header_fields) if s.header_fields else {},
         "line_items": json.loads(s.line_items) if s.line_items else [],
         "quality_report": json.loads(s.quality_report) if s.quality_report else {},
@@ -177,31 +178,75 @@ async def get_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/shipments/{shipment_id}/send")
 async def send_shipment(shipment_id: int, db: AsyncSession = Depends(get_db)):
+    # Delegate to the CEISA submission endpoint
+    from routes.ceisa_routes import submit_shipment_ceisa
+    from ceisa import config as ceisa_config, CeisaAPIError
+    from fastapi import HTTPException
+
+    if not ceisa_config.is_configured:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "CEISA credentials not configured. "
+                "Set CEISA_USERNAME and CEISA_PASSWORD in .env file, "
+                "or use POST /api/ceisa/submit/{id} after configuring."
+            ),
+        )
+
     result = await db.execute(select(Shipment).where(Shipment.id == shipment_id))
     s = result.scalar_one_or_none()
     if not s:
         raise HTTPException(status_code=404, detail="Shipment not found")
 
-    s.status = ShipmentStatus.SENT
-    s.updated_at = get_local_time()
-    await db.commit()
-    await db.refresh(s)
+    if s.ceisa_id_header:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Shipment already submitted to CEISA. idHeader={s.ceisa_id_header}",
+        )
 
-    await create_activity(
-        db=db,
-        action=ActivityAction.DECLARATION_SEND,
-        description=f"Submitted declaration {s.reference_code} to CEISA simulation.",
-        entity_type="shipment",
-        entity_id=s.id,
-        reference_code=s.reference_code,
-        metadata={
-            "aju_number": s.aju_number,
-            "confidence": round(s.extraction_confidence * 100) if s.extraction_confidence else 0,
-        },
-        status="sent",
-    )
+    try:
+        ceisa_result = await submit_shipment_ceisa(shipment_id, db)
+    except CeisaAPIError as e:
+        raise HTTPException(status_code=502, detail=f"CEISA API error: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
-    return {"message": "Shipment marked as sent", "id": s.id, "status": s.status.value}
+    if ceisa_result.success:
+        s.status = ShipmentStatus.SENT
+        s.ceisa_id_header = ceisa_result.id_header
+        s.updated_at = get_local_time()
+        await db.commit()
+
+        await create_activity(
+            db=db,
+            action=ActivityAction.DECLARATION_SEND,
+            description=f"Declaration {s.reference_code} submitted to CEISA 4.0. idHeader={ceisa_result.id_header}",
+            entity_type="shipment",
+            entity_id=s.id,
+            reference_code=s.reference_code,
+            metadata={
+                "id_header": ceisa_result.id_header,
+                "aju_number": s.aju_number,
+                "confidence": round(s.extraction_confidence * 100) if s.extraction_confidence else 0,
+            },
+            status="sent",
+        )
+        return {
+            "message": "Declaration submitted to CEISA 4.0",
+            "id": s.id,
+            "status": s.status.value,
+            "ceisa_id_header": ceisa_result.id_header,
+            "ceisa_status": ceisa_result.status,
+        }
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": ceisa_result.message,
+                "ceisa_status": ceisa_result.status,
+                "raw_response": ceisa_result.raw_response,
+            },
+        )
 
 
 @router.patch("/shipments/{shipment_id}/status")

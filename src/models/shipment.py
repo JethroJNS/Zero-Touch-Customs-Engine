@@ -38,6 +38,8 @@ class Shipment(Base):
     line_items = Column(Text, nullable=True)
     quality_report = Column(Text, nullable=True)
     excel_data = Column(Text, nullable=True)
+    extracted_data = Column(Text, nullable=True)   # JSON extraction result (for CEISA mapping)
+    ceisa_id_header = Column(String(100), nullable=True, index=True)  # CEISA idHeader after submission
     file_size_kb = Column(Integer, default=0)
     created_at = Column(DateTime, default=get_local_time)
     updated_at = Column(DateTime, default=get_local_time, onupdate=get_local_time)
