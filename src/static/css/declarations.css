@@ -1,7 +1,3 @@
-/* =========================================
-   DECLARATIONS PAGE STYLES
-   ========================================= */
-
 .main-content {
   padding: 24px 32px;
   display: flex;
@@ -263,7 +259,7 @@ tr:last-child td {
   text-align: center;
 }
 
-/* Toast (already in shared, but declaration-specific override for sizing) */
+/* Toast */
 .toast {
   font-size: 14px;
 }

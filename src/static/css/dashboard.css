@@ -1,7 +1,3 @@
-/* =========================================
-   DASHBOARD PAGE STYLES
-   ========================================= */
-
 .main-content {
   padding: 24px 32px;
   display: flex;
@@ -254,7 +250,7 @@
   margin-right: 12px;
 }
 
-/* Toast (shared, but page-specific positioning already handled in shared.css) */
+/* Toast */
 
 /* Responsive */
 @media (max-width: 1200px) {

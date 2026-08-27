@@ -1,7 +1,3 @@
-// =========================================
-// SMART UPLOAD PAGE — dashboard.js
-// =========================================
-
 (function () {
   // State
   const state = {
@@ -11,9 +7,7 @@
     lastExtractionResult: null,
   };
 
-  // =========================================
   // Drag & Drop
-  // =========================================
   function onDragOver(event) {
     event.preventDefault();
     event.currentTarget.classList.add('drag-over');
@@ -27,14 +21,11 @@
     document.getElementById(id).click();
   }
 
-  // =========================================
   // File Selection
-  // =========================================
   function onFileSelected(input, docType) {
     const file = input.files[0];
     if (!file) return;
 
-    // Validate size (20 MB)
     if (file.size > 20 * 1024 * 1024) {
       showStatus('error', 'File Too Large',
         file.name + ' is ' + (file.size / 1024 / 1024).toFixed(1) + ' MB. Maximum: 20 MB.');
@@ -104,9 +95,7 @@
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
 
-  // =========================================
   // Loading Animation
-  // =========================================
   let _loadingTimer = null;
   let _startTime    = 0;
 
@@ -205,7 +194,6 @@
       lineItemsSection.style.display = 'none';
     }
 
-    // Show quality warnings if low confidence
     const warningsSection = document.getElementById('quality-warnings');
     const warningsList    = document.getElementById('warnings-list');
     const qualityReport   = fullData ? fullData.quality_report || {} : {};
@@ -239,13 +227,10 @@
       warningsSection.style.display = 'none';
     }
 
-    // Scroll to results
     resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  // =========================================
   // Run Pipeline
-  // =========================================
   async function runPipeline() {
     if (state.processing) return;
 
@@ -332,9 +317,7 @@
     }
   }
 
-  // =========================================
   // Save to Declarations
-  // =========================================
   async function saveToDeclarations() {
     const saveBtn = document.getElementById('save-btn');
     if (!state.lastExtractionResult) {
@@ -406,9 +389,7 @@
     }
   }
 
-  // =========================================
   // Status Panel
-  // =========================================
   function showStatus(type, title, message) {
     const section = document.getElementById('status-section');
     const card    = document.getElementById('status-card');
@@ -440,9 +421,7 @@
     document.getElementById('status-section').style.display = 'none';
   }
 
-  // =========================================
   // Utility
-  // =========================================
   function escHtml(str) {
     if (str === null || str === undefined) return '';
     var div = document.createElement('div');
@@ -450,9 +429,7 @@
     return div.innerHTML;
   }
 
-  // =========================================
   // Init
-  // =========================================
   updateFileCountBadge();
   updateRunButton();
 

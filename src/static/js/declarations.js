@@ -1,7 +1,3 @@
-// =========================================
-// DECLARATIONS PAGE
-// =========================================
-
 (function () {
 
   // State
@@ -42,9 +38,7 @@
     });
   });
 
-  // =========================================
   // Load Shipments
-  // =========================================
   async function loadShipments() {
     try {
       var offset    = (currentPage - 1) * itemsPerPage;
@@ -67,9 +61,7 @@
     }
   }
 
-  // =========================================
   // Render Table
-  // =========================================
   function renderTable() {
     var tbody = document.getElementById('shipmentsTable');
 
@@ -147,9 +139,7 @@
     tbody.innerHTML = html;
   }
 
-  // =========================================
   // Pagination
-  // =========================================
   function renderPagination() {
     var bar      = document.getElementById('paginationBar');
     var info     = document.getElementById('paginationInfo');
@@ -224,9 +214,7 @@
     loadShipments();
   }
 
-  // =========================================
   // Setup Filters & Search
-  // =========================================
   function setupFilters() {
     var select = document.getElementById('statusFilter');
     select.addEventListener('change', function() {
@@ -249,9 +237,7 @@
     });
   }
 
-  // =========================================
   // View Detail
-  // =========================================
   async function viewDetail(id) {
     try {
       var response = await fetch('/api/shipments/' + id);
@@ -289,9 +275,7 @@
     }
   }
 
-  // =========================================
   // Modals
-  // =========================================
   function closeModal() {
     document.getElementById('detailModal').classList.remove('show');
   }
@@ -311,9 +295,7 @@
     confirmCallback = null;
   }
 
-  // =========================================
   // Send Shipment to CEISA 4.0
-  // =========================================
   async function sendShipment(id) {
     showConfirmModal(
       'Kirim ke CEISA 4.0',
@@ -338,9 +320,7 @@
     );
   }
 
-  // =========================================
   // Preview CEISA JSON
-  // =========================================
   async function previewCeisa(id) {
     try {
       var response = await fetch('/api/ceisa/preview/' + id);
@@ -370,9 +350,7 @@
     document.getElementById('detailModal').classList.add('show');
   }
 
-  // =========================================
   // Delete Shipment
-  // =========================================
   async function deleteShipment(id) {
     showConfirmModal(
       'Delete Declaration',
@@ -395,9 +373,7 @@
     );
   }
 
-  // =========================================
   // Helpers
-  // =========================================
   function getConfidenceClass(confidence) {
     if (confidence >= 80) return 'high';
     if (confidence >= 50) return 'medium';
