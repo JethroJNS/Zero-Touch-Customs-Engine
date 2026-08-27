@@ -204,36 +204,30 @@
           </div>
         </div>
 
-        <!-- Progress Bar Section -->
-        <div class="progress-section" id="progress-section" style="display: none;">
-          <div class="progress-header">
-            <span class="progress-label" id="progress-label">Processing documents...</span>
-            <span class="progress-percent" id="progress-percent">0%</span>
-          </div>
-          <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-          </div>
-          <div class="progress-steps" id="progress-steps">
-            <div class="progress-step" data-step="upload">
-              <span class="step-indicator"></span>
-              <span class="step-label">Upload</span>
+        <!-- Loading Section -->
+        <div class="loading-section" id="loading-section" style="display: none;">
+          <div class="loading-card">
+            <!-- Animated document scanner graphic -->
+            <div class="loading-graphic">
+              <div class="doc-icon">
+                <svg viewBox="0 0 80 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 8C12 5.79 13.79 4 16 4h34l18 18v70c0 2.21-1.79 4-4 4H16c-2.21 0-4-1.79-4-4V8z"
+                    fill="var(--primary-light)" stroke="var(--primary)" stroke-width="2"/>
+                  <path d="M50 4v18h18" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line class="scan-line" x1="18" y1="36" x2="62" y2="36" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/>
+                  <line class="scan-line" x1="18" y1="50" x2="62" y2="50" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/>
+                  <line class="scan-line" x1="18" y1="64" x2="48" y2="64" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/>
+                  <line class="scan-line" x1="18" y1="78" x2="55" y2="78" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <!-- Scanning beam overlay -->
+                <div class="scan-beam"></div>
+              </div>
+              <!-- Spinning orbit ring -->
+              <div class="orbit-ring"></div>
             </div>
-            <div class="progress-step" data-step="ocr">
-              <span class="step-indicator"></span>
-              <span class="step-label">OCR</span>
-            </div>
-            <div class="progress-step" data-step="extract">
-              <span class="step-indicator"></span>
-              <span class="step-label">Extract</span>
-            </div>
-            <div class="progress-step" data-step="validate">
-              <span class="step-indicator"></span>
-              <span class="step-label">Validate</span>
-            </div>
-            <div class="progress-step" data-step="export">
-              <span class="step-indicator"></span>
-              <span class="step-label">Export</span>
-            </div>
+
+            <!-- Processing text -->
+            <div class="loading-time" id="loading-time">Processing...</div>
           </div>
         </div>
 
@@ -385,7 +379,7 @@
   </div>
 
   <script>
-    // ── State ────────────────────────────────────────────────────────────────
+    // State
     const state = {
       files: { CI: null, PL: null, BL: null },
       processing: false,
@@ -393,7 +387,7 @@
       lastExtractionResult: null,  // Store extraction result for saving
     };
 
-    // ── Drag & Drop ─────────────────────────────────────────────────────────
+    // Drag & Drop
     function onDragOver(event) {
       event.preventDefault();
       event.currentTarget.classList.add('drag-over');
@@ -407,7 +401,7 @@
       document.getElementById(id).click();
     }
 
-    // ── File Selection ───────────────────────────────────────────────────────
+    // File Selection
     function onFileSelected(input, docType) {
       const file = input.files[0];
       if (!file) return;
@@ -482,89 +476,27 @@
       return (bytes / 1024 / 1024).toFixed(1) + ' MB';
     }
 
-    // ── Progress Bar ─────────────────────────────────────────────────────────
-    let currentProgress = 0;
-    let progressAnimation = null;
+    // Loading Animation
+    let _loadingTimer = null;
+    let _startTime = 0;
 
-    function animateProgress(targetPercent, duration = 300) {
-      const startPercent = currentProgress;
-      const startTime = performance.now();
-
-      if (progressAnimation) cancelAnimationFrame(progressAnimation);
-
-      function animate(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        const easeOut = 1 - Math.pow(1 - progress, 3);
-        currentProgress = startPercent + (targetPercent - startPercent) * easeOut;
-
-        const fill = document.getElementById('progress-fill');
-        const percentEl = document.getElementById('progress-percent');
-        if (fill) fill.style.width = `${currentProgress}%`;
-        if (percentEl) percentEl.textContent = `${Math.round(currentProgress)}%`;
-
-        if (progress < 1) {
-          progressAnimation = requestAnimationFrame(animate);
-        }
-      }
-
-      progressAnimation = requestAnimationFrame(animate);
+    function _tickTime() {
+      const sec = Math.round((Date.now() - _startTime) / 1000);
+      const el = document.getElementById('loading-time');
+      if (el) el.textContent = `Processing... ${sec}s`;
     }
 
-    function setProgress(percent, step) {
-      const fill = document.getElementById('progress-fill');
-      const percentEl = document.getElementById('progress-percent');
-      const labelEl = document.getElementById('progress-label');
-
-      // Animate to the target percentage
-      animateProgress(percent, 400);
-
-      const stepLabels = {
-        0: 'Uploading documents...',
-        15: 'Running OCR engine...',
-        35: 'Extracting entities...',
-        55: 'Validating data...',
-        75: 'Generating CEISA 4.0...',
-        95: 'Finalizing...',
-        100: 'Complete!',
-      };
-
-      if (step !== undefined && labelEl) {
-        labelEl.textContent = stepLabels[step] || 'Processing...';
-
-        // Update step indicators
-        document.querySelectorAll('.progress-step').forEach(el => {
-          const elStep = parseInt(el.dataset.step === 'upload' ? 0 :
-                                  el.dataset.step === 'ocr' ? 15 :
-                                  el.dataset.step === 'extract' ? 35 :
-                                  el.dataset.step === 'validate' ? 55 : 75);
-          if (step >= elStep + 20) {
-            el.classList.add('completed');
-          } else if (Math.abs(step - elStep) <= 20) {
-            el.classList.add('active');
-          } else {
-            el.classList.remove('completed', 'active');
-          }
-        });
-      }
-    }
-
-    function showProgress() {
-      document.getElementById('progress-section').style.display = 'block';
+    function showLoading() {
+      document.getElementById('loading-section').style.display = 'flex';
       document.getElementById('results-section').style.display = 'none';
-      currentProgress = 0;
-
-      // Reset step indicators
-      document.querySelectorAll('.progress-step').forEach(el => {
-        el.classList.remove('completed', 'active');
-      });
-
-      // Animate initial progress
-      animateProgress(5, 500);
+      _startTime = Date.now();
+      _tickTime();
+      _loadingTimer = setInterval(_tickTime, 1000);
     }
 
-    function hideProgress() {
-      document.getElementById('progress-section').style.display = 'none';
+    function hideLoading() {
+      if (_loadingTimer) { clearInterval(_loadingTimer); _loadingTimer = null; }
+      document.getElementById('loading-section').style.display = 'none';
     }
 
     function showResults(data, fullData) {
@@ -687,7 +619,11 @@
       resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    // ── Run Pipeline ────────────────────────────────────────────────────────
+    // Run Pipeline
+    //
+    // Uses the standard /api/extract endpoint. The loading animation provides
+    // visual feedback via elapsed-time stage cycling — no fake progress bar.
+    //
     async function runPipeline() {
       if (state.processing) return;
 
@@ -704,50 +640,30 @@
       state.processing = true;
       state.startTime = Date.now();
       hideStatus();
-      showProgress();
+      showLoading();
       setProcessing(true);
 
       const formData = new FormData();
       for (const [docType, file] of Object.entries(uploaded)) {
         formData.append(docType, file);
       }
-
-      // Add AJU number as shipment_id
       const ajuNumber = document.getElementById('aju-number').value.trim();
-      if (ajuNumber) {
-        formData.append('shipment_id', ajuNumber);
-      }
+      if (ajuNumber) formData.append('shipment_id', ajuNumber);
 
       try {
-        // Progress: Uploading (simulated animation while waiting)
-        setProgress(10, 0);
-
         const response = await fetch('/api/extract', {
           method: 'POST',
           body: formData,
         });
 
-        // Progress: OCR running (animate to intermediate point)
-        setProgress(25, 15);
-
         if (!response.ok) {
-          let errorMsg = `Server error: ${response.status} ${response.statusText}`;
-          try {
-            const errData = await response.json();
-            if (errData.detail) errorMsg = errData.detail;
-          } catch (_) {}
+          let errorMsg = 'Server error: ' + response.status + ' ' + response.statusText;
+          try { const d = await response.json(); if (d.detail) errorMsg = d.detail; } catch (_) {}
           throw new Error(errorMsg);
         }
 
-        // Progress: Extracting entities (animate to intermediate point)
-        setProgress(45, 35);
-
-        // Parse JSON response (new format without result wrapper)
         const jsonData = await response.json();
-        state.lastExtractionResult = jsonData;  // Store for later saving
-
-        // Progress: Validating data
-        setProgress(65, 55);
+        state.lastExtractionResult = jsonData;
 
         // Decode base64 and trigger download
         const byteCharacters = atob(jsonData.excel_base64);
@@ -757,13 +673,9 @@
         }
         const byteArray = new Uint8Array(byteNumbers);
         const blob = new Blob([byteArray], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         });
 
-        // Progress: Generating Excel
-        setProgress(85, 75);
-
-        // Trigger download
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -773,12 +685,8 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        // Progress: Finalizing
-        setProgress(100, 100);
-
-        // Show results with real data from backend
         setTimeout(() => {
-          hideProgress();
+          hideLoading();
           showResults({
             confidence: jsonData.confidence,
             docsCount: jsonData.documents_processed.length,
@@ -786,16 +694,15 @@
             processingTime: jsonData.processing_time_seconds + 's',
             qualityScore: jsonData.quality_score,
             fieldsExtracted: {},
-          }, jsonData);  // Pass full response for header_fields and line_items
-
+          }, jsonData);
           showStatus('success', 'Extraction Complete',
-            `CEISA 4.0 Excel file "${jsonData.filename}" has been downloaded. ` +
-            `Click "Save to Declarations" to save this result.`);
-        }, 500);
+            'CEISA 4.0 Excel file "' + (jsonData.filename || 'extraction') + '" has been downloaded. ' +
+            'Click "Save to Declarations" to save this result.');
+        }, 400);
 
       } catch (err) {
         console.error('Extraction error:', err);
-        hideProgress();
+        hideLoading();
         showStatus('error', 'Extraction Failed', err.message || 'An unknown error occurred.');
       } finally {
         state.processing = false;
@@ -803,7 +710,8 @@
       }
     }
 
-    // ── Save to Declarations ──────────────────────────────────────────────────
+
+    // Save to Declarations
     async function saveToDeclarations() {
       const saveBtn = document.getElementById('save-btn');
       if (!state.lastExtractionResult) {
@@ -876,7 +784,7 @@
       }
     }
 
-    // ── Status Panel ─────────────────────────────────────────────────────────
+    // Status Panel
     function showStatus(type, title, message) {
       const section = document.getElementById('status-section');
       const card = document.getElementById('status-card');
@@ -910,7 +818,7 @@
       document.getElementById('status-section').style.display = 'none';
     }
 
-    // ── Init ─────────────────────────────────────────────────────────────────
+    // Init
     updateFileCountBadge();
     updateRunButton();
   </script>

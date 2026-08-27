@@ -750,6 +750,104 @@ body {
   line-height: 1.5;
 }
 
+/* Loading Section */
+.loading-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 32px 0;
+  animation: fadeIn 0.25s ease;
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px 48px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Animated document scanner graphic */
+.loading-graphic {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doc-icon {
+  position: relative;
+  width: 52px;
+  animation: docBreath 2.4s ease-in-out infinite;
+}
+
+.doc-icon svg {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 4px 12px rgba(99, 102, 241, 0.25));
+}
+
+/* Scanning beam */
+.scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--primary);
+  animation: scanBeam 2s ease-in-out infinite;
+}
+
+/* Orbit ring */
+.orbit-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid transparent;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spinOrbit 1.4s linear infinite;
+}
+
+/* Processing text */
+.loading-time {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.01em;
+  min-height: 24px;
+  animation: textPulse 2s ease-in-out infinite;
+}
+
+/* Keyframes */
+@keyframes docBreath {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
+}
+
+@keyframes scanBeam {
+  0%   { top: 12%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 88%; opacity: 0; }
+}
+
+@keyframes spinOrbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes textPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+
 /* Results Section */
 .results-section {
   background: var(--surface);
