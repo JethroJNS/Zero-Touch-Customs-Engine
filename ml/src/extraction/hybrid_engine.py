@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Union
@@ -102,14 +103,27 @@ class HybridExtractor:
         vision_used = False
 
         # Extract LayoutXLM entities
-        ci_layout = self._extract_layout(ocr_results.get("CI"), "CI")
-        bl_layout = self._extract_layout(ocr_results.get("BL"), "BL")
-        pl_layout = self._extract_layout(ocr_results.get("PL"), "PL")
+        # Optimization: if CI/PL/BL use the same file, LayoutXLM result is the same
+        ci_ocr = ocr_results.get("CI")
+        pl_ocr = ocr_results.get("PL")
+        bl_ocr = ocr_results.get("BL")
+
+        # Determine which LayoutXLM runs are redundant (same OCR text)
+        ci_fp = ci_ocr.file_path if ci_ocr else ""
+        pl_fp = pl_ocr.file_path if pl_ocr else ""
+        bl_fp = bl_ocr.file_path if bl_ocr else ""
+
+        ci_layout = self._extract_layout(ci_ocr, "CI")
+        pl_layout = (ci_layout if pl_fp and pl_fp == ci_fp
+                     else self._extract_layout(pl_ocr, "PL"))
+        bl_layout = (ci_layout if bl_fp and bl_fp == ci_fp
+                     else (pl_layout if bl_fp and bl_fp == pl_fp
+                           else self._extract_layout(bl_ocr, "BL")))
 
         # Extract Pattern entities (numeric, tabular)
-        ci_pattern = self._extract_pattern(ocr_results.get("CI"))
-        bl_pattern = self._extract_pattern(ocr_results.get("BL"))
-        pl_pattern = self._extract_pattern(ocr_results.get("PL"))
+        ci_pattern = self._extract_pattern(ci_ocr)
+        pl_pattern = ci_pattern if (pl_fp and pl_fp == ci_fp) else self._extract_pattern(pl_ocr)
+        bl_pattern = ci_pattern if (bl_fp and bl_fp == ci_fp) else self._extract_pattern(bl_ocr)
 
         # Extract line items dari CI
         ci_text = ocr_results.get("CI", OCRResult("", "", [], 0)).full_text
@@ -128,6 +142,27 @@ class HybridExtractor:
             ci_items=ci_items,
             pl_text=ocr_results.get("PL", OCRResult("", "", [], 0)).full_text,
         )
+
+        # Extract Form E goods if present
+        fe_ocr = ocr_results.get("FE")
+        if fe_ocr and fe_ocr.full_text:
+            try:
+                from ml.src.extraction.form_e import extract_form_e
+                form_e_goods = extract_form_e(fe_ocr.full_text)
+                if form_e_goods:
+                    entities.form_e_goods = form_e_goods
+                    logger.info(
+                        f"[{shipment_id}] Form E extracted: "
+                        f"{len(form_e_goods)} goods rows "
+                        f"({sum(1 for g in form_e_goods if g.hs_found)} HS found)"
+                    )
+                else:
+                    notes.append("Form E: extracted 0 goods (check layout variant)")
+            except Exception as e:
+                logger.warning(f"Form E extraction failed: {e}")
+                notes.append(f"Form E extraction error: {e}")
+        else:
+            notes.append("Form E: not provided")
 
         # Vision LLM fallback
         should_call_vision = (
@@ -365,6 +400,70 @@ class HybridExtractor:
             logger.warning(f"Pattern extraction failed: {e}")
             return {}
 
+    def _read_pdf_fast(
+        self,
+        file_path: str,
+        doc_type: str,
+        max_pages_for_fe: int = 20,
+    ) -> Optional[OCRResult]:
+        # Fast PDF OCR: for Form E docs, skip redundant OVERLEAF/notes pages.
+        # Form E Layout 1 alternates: data pages (odd-numbered) vs OVERLEAF notes (even-numbered).
+        # Form E Layout 2 is single-page so this has no effect.
+        import fitz
+        from pathlib import Path
+
+        path = Path(file_path)
+        doc = fitz.open(path)
+        total_pages = len(doc)
+
+        if total_pages == 0:
+            doc.close()
+            return None
+
+        FE_OCR_DPI = 150
+        # Step 1: OCR first page at 150 DPI for speed
+        img = self._ocr._render_pdf_page(doc, 0, dpi=FE_OCR_DPI)
+        first_page = self._ocr._process_image(img, 0)
+        first_text = first_page.text
+
+        # Step 2: Detect Form E multi-page layout
+        # Layout 1: pages with "PAGE X OF Y" numbering scheme (multi-page Form E)
+        # Even-indexed pages = data (HS CODE, PIECES), odd-indexed = OVERLEAF NOTES
+        first_upper = first_text.upper()
+        has_page_header = "PAGE" in first_upper
+        is_form_e_multi = total_pages >= 4 and has_page_header
+
+        if not is_form_e_multi:
+            # Single-page or non-Form E: use standard OCR
+            doc.close()
+            return self._ocr.read_file(path)
+
+        # Step 3: Form E multi-page: skip even-indexed pages (OVERLEAF NOTES)
+        # 0-indexed: 0=data, 1=overleaf, 2=data, 3=overleaf, etc.
+        data_page_indices = [i for i in range(total_pages) if i % 2 == 0]
+        logger.info(
+            f"[{doc_type}] Form E multi-page detected: {total_pages} pages, "
+            f"OCR-ing {len(data_page_indices)} data pages (skipping OVERLEAF pages)"
+        )
+
+        pages = [first_page]
+        # Use 150 DPI for faster rendering (Form E documents are text-based, not image-heavy)
+        FE_OCR_DPI = 150
+        for page_idx in data_page_indices[1:]:
+            img = self._ocr._render_pdf_page(doc, page_idx, dpi=FE_OCR_DPI)
+            page = self._ocr._process_image(img, page_idx)
+            page.width = float(img.width)
+            page.height = float(img.height)
+            pages.append(page)
+
+        doc.close()
+        return OCRResult(
+            file_path=str(path),
+            file_type="pdf",
+            pages=pages,
+            total_pages=total_pages,
+        )
+
     def extract_from_files(
         self,
         file_paths: Dict[str, str],
@@ -376,7 +475,12 @@ class HybridExtractor:
         for doc_type, path in file_paths.items():
             if path:
                 try:
-                    result = self._ocr.read_file(path)
+                    # FE: gunakan fast Form E OCR (skip OVERLEAF pages)
+                    if doc_type == "FE":
+                        result = self._read_pdf_fast(path, doc_type)
+                    else:
+                        result = self._ocr.read_file(path)
+
                     if result and result.full_text:
                         ocr_results[doc_type] = result
                         logger.info(

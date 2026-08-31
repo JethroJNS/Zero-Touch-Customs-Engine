@@ -176,13 +176,9 @@ class OCREngine:
         self.config = (config or OCR_CONFIG.copy()).copy()
         self.config["use_gpu"] = False  # Selalu CPU
 
-        ocr_kwargs = {
-            k: v for k, v in self.config.items()
-            if k not in ["use_gpu"]
-        }
-        ocr_kwargs["use_gpu"] = False
-
-        self._ocr = PaddleOCR(**ocr_kwargs)
+        # Only pass lang to avoid unsupported args in new PaddleOCR versions
+        lang = self.config.get("lang", "en")
+        self._ocr = PaddleOCR(lang=lang)
         logger.info("OCREngine initialized (CPU mode)")
 
     def _render_pdf_page(self, pdf_doc, page_num: int, dpi: int = 300) -> Image.Image:
@@ -258,7 +254,7 @@ class OCREngine:
 
     def _process_image(self, img: Image.Image, page_num: int = 0) -> OCRPage:
         img_array = np.array(img.convert("RGB"))
-        result = self._ocr.ocr(img_array, cls=self.config.get("use_angle_cls", True))
+        result = self._ocr.ocr(img_array)
 
         words: List = []
         if result and result[0]:
