@@ -60,6 +60,10 @@ class ShipmentEntities:
     # LINE ITEMS
     items: List[ItemEntity] = field(default_factory=list)
 
+    # FORM E (CERTIFICATE OF ORIGIN - ACFTA)
+    # Extracted goods from Form E document: HS codes, quantities, tariff rates
+    form_e_goods: List[Any] = field(default_factory=list)
+
     # METADATA
     extraction_confidence: float = 0.0
     layout_entities_count: int = 0
@@ -102,6 +106,14 @@ class ShipmentEntities:
             "number_of_packages": self.number_of_packages,
             "packaging_type": self.packaging_type,
             "items": [i.to_dict() for i in self.items],
+            "form_e_goods": [
+                {"row_number": g.row_number, "hs_code": g.hs_code,
+                 "quantity": g.quantity, "unit": g.unit,
+                 "description": g.description,
+                 "bm_rate": g.bm_rate, "ppn_rate": g.ppn_rate,
+                 "pph_rate": g.pph_rate, "hs_found": g.hs_found}
+                for g in self.form_e_goods
+            ],
             "extraction_confidence": self.extraction_confidence,
             # Production quality metadata
             "quality_flag": quality_report["quality_flag"],

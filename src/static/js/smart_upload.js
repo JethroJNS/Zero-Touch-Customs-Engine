@@ -1,7 +1,7 @@
 (function () {
   // State
   const state = {
-    files: { CI: null, PL: null, BL: null },
+    files: { CI: null, PL: null, BL: null, FE: null },
     processing: false,
     startTime: null,
     lastExtractionResult: null,
@@ -192,6 +192,29 @@
       }).join('');
     } else {
       lineItemsSection.style.display = 'none';
+    }
+
+    // Populate Form E goods table
+    const feSection = document.getElementById('form-e-section');
+    const feTbody   = document.getElementById('fe-tbody');
+    const feGoods   = fullData ? fullData.form_e_goods || [] : [];
+
+    if (feGoods.length > 0) {
+      feSection.style.display = 'block';
+      feTbody.innerHTML = feGoods.map(function(g) {
+        return '<tr>' +
+          '<td>' + escHtml(String(g.row_number || '--')) + '</td>' +
+          '<td>' + escHtml(g.hs_code      || '--') + '</td>' +
+          '<td>' + escHtml(g.quantity     || '--') + '</td>' +
+          '<td>' + escHtml(g.unit         || '--') + '</td>' +
+          '<td>' + escHtml(g.description  || '--') + '</td>' +
+          '<td>' + escHtml(String(g.bm_rate || '--')) + '</td>' +
+          '<td>' + escHtml(String(g.ppn_rate || '--')) + '</td>' +
+          '<td>' + escHtml(String(g.pph_rate || '--')) + '</td>' +
+        '</tr>';
+      }).join('');
+    } else {
+      feSection.style.display = 'none';
     }
 
     const warningsSection = document.getElementById('quality-warnings');

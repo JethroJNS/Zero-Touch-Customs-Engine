@@ -448,9 +448,10 @@ async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)
     ci_key, ci_file = get_file("CI")
     pl_key, pl_file = get_file("PL")
     bl_key, bl_file = get_file("BL")
+    fe_key, fe_file = get_file("FE")
 
     uploaded = {}
-    for doc_type, file in [("CI", ci_file), ("PL", pl_file), ("BL", bl_file)]:
+    for doc_type, file in [("CI", ci_file), ("PL", pl_file), ("BL", bl_file), ("FE", fe_file)]:
         if file and file.filename:
             uploaded[doc_type] = file
 
@@ -593,6 +594,22 @@ async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)
             if item_data['description']:
                 line_items.append(item_data)
 
+        # Form E goods (for BARANGTARIF sheet)
+        form_e_goods = []
+        fe_goods = getattr(result.entities, 'form_e_goods', []) or []
+        for g in fe_goods:
+            form_e_goods.append({
+                'row_number': g.row_number,
+                'hs_code': g.hs_code,
+                'quantity': g.quantity,
+                'unit': g.unit,
+                'description': g.description,
+                'bm_rate': round(g.bm_rate, 2),
+                'ppn_rate': round(g.ppn_rate, 2),
+                'pph_rate': round(g.pph_rate, 2),
+                'hs_found': g.hs_found,
+            })
+
         quality_report = {}
         if hasattr(result.entities, 'get_quality_report'):
             quality_report = result.entities.get_quality_report()
@@ -634,6 +651,8 @@ async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)
             "excel_base64": excel_base64,
             "header_fields": header_fields,
             "line_items": line_items,
+            "form_e_goods": form_e_goods,
+            "form_e_count": len(form_e_goods),
             "quality_report": quality_report,
             "aju_number": shipment_id,
             "total_amount": str(total_amount) if total_amount else None,

@@ -15,6 +15,7 @@ from ml.src.extraction.merger import ShipmentEntities
 from ml.src.extraction.items import ItemEntity
 from ml.src.extraction import lookups as lk
 from ml.src.extraction import rules as br
+from ml.src.extraction import hs_lookup
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class ExcelExporter:
             "KONTAINER":         self._fill_kontainer,
             "KOMPONENBIAYA":     self._fill_komponenbiaya,
             "BARANG":            self._fill_barang,
+            "BARANGTARIF":       self._fill_barangtarif,
             "PUNGUTAN":          self._fill_pungutan,
             "VERSI":             self._fill_versi,
         }
@@ -639,6 +641,106 @@ class ExcelExporter:
         # self._set(ws, r, "NOMOR AJU", shipment_id, columns)
         # self._set(ws, r, "KODE JENIS PUNGUTAN", "PPNBM", columns)
         # self._set(ws, r, "JUMLAH PUNGUTAN", 0.0, columns)
+
+    # BARANGTARIF
+
+    def _fill_barangtarif(
+        self,
+        ws,
+        entities: ShipmentEntities,
+        shipment_id: str,
+        columns: List[str],
+    ) -> None:
+        from ml.src.extraction.form_e import extract_form_e
+
+        # Get Form E goods if available
+        form_e_goods = getattr(entities, "form_e_goods", []) or []
+
+        if not form_e_goods:
+            self._fill_barangtarif_from_items(ws, entities, shipment_id, columns)
+            return
+
+        r = 2  # Data rows start at 2
+
+        for good in form_e_goods:
+            seri = good.row_number
+            hs = good.hs_code
+            qty = good.quantity
+            unit = good.unit or "PCE"
+
+            # Get tariff rates (already looked up in form_e.py)
+            bm_rate = good.bm_rate
+            ppn_rate = good.ppn_rate
+            pph_rate = good.pph_rate
+
+            # For each pungutan: BM, PPH, PPN
+            for kode_pungutan, tarif_rate in [("BM", bm_rate), ("PPH", pph_rate), ("PPN", ppn_rate)]:
+                self._set(ws, r, "NOMOR AJU", shipment_id, columns)
+                self._set(ws, r, "SERI BARANG", str(seri), columns)
+                self._set(ws, r, "KODE PUNGUTAN", kode_pungutan, columns)
+                self._set(ws, r, "KODE TARIF", hs, columns)
+                self._set(ws, r, "TARIF", round(tarif_rate, 4) if tarif_rate > 0 else 0.0, columns)
+                self._set(ws, r, "KODE FASILITAS", "0", columns)
+                self._set(ws, r, "TARIF FASILITAS", 0.0, columns)
+                self._set(ws, r, "NILAI BAYAR", 0.0, columns)
+                self._set(ws, r, "NILAI FASILITAS", 0.0, columns)
+                self._set(ws, r, "NILAI SUDAH DILUNASI", 0.0, columns)
+                self._set(ws, r, "KODE SATUAN", unit, columns)
+                self._set(ws, r, "JUMLAH SATUAN", qty, columns)
+                self._set(ws, r, "FLAG BMT SEMENTARA", "", columns)
+                self._set(ws, r, "KODE KOMODITI CUKAI", "", columns)
+                self._set(ws, r, "KODE SUB KOMODITI CUKAI", "", columns)
+                self._set(ws, r, "FLAG TIS", "", columns)
+                self._set(ws, r, "FLAG PELEKATAN", "", columns)
+                self._set(ws, r, "KODE KEMASAN", "", columns)
+                self._set(ws, r, "JUMLAH KEMASAN", 0, columns)
+                r += 1
+
+    def _fill_barangtarif_from_items(
+        self,
+        ws,
+        entities: ShipmentEntities,
+        shipment_id: str,
+        columns: List[str],
+    ) -> None:
+        # Fallback: fill BARANGTARIF from CI items (no Form E data).
+        r = 2
+        for i, item in enumerate(entities.items, start=1):
+            hs_raw = item.hs_code or ""
+            hs = hs_raw.replace(".", "").replace(",", "").strip()
+            if len(hs) < 4:
+                hs = "94031000"
+
+            # Get tariff rates using hs_lookup (returns bm/ppn/pph as percentages)
+            hs_int = int(hs[:8].ljust(8, "0")) if hs.isdigit() else 0
+            tariff_data = hs_lookup.get_hs_tariff(hs_int)
+            bm_rate = tariff_data.get("bm", 0.0)
+            ppn_rate = tariff_data.get("ppn", 0.0)
+
+            qty = br.parse_amount(item.quantity or "0")
+            unit_code = lk.get_packaging_code(item.unit or "PCE")
+
+            for kode_pungutan, tarif_rate in [("BM", bm_rate), ("PPH", 0.0), ("PPN", ppn_rate)]:
+                self._set(ws, r, "NOMOR AJU", shipment_id, columns)
+                self._set(ws, r, "SERI BARANG", str(i), columns)
+                self._set(ws, r, "KODE PUNGUTAN", kode_pungutan, columns)
+                self._set(ws, r, "KODE TARIF", hs[:8].ljust(8, "0"), columns)
+                self._set(ws, r, "TARIF", round(tarif_rate, 4) if tarif_rate > 0 else 0.0, columns)
+                self._set(ws, r, "KODE FASILITAS", "0", columns)
+                self._set(ws, r, "TARIF FASILITAS", 0.0, columns)
+                self._set(ws, r, "NILAI BAYAR", 0.0, columns)
+                self._set(ws, r, "NILAI FASILITAS", 0.0, columns)
+                self._set(ws, r, "NILAI SUDAH DILUNASI", 0.0, columns)
+                self._set(ws, r, "KODE SATUAN", unit_code, columns)
+                self._set(ws, r, "JUMLAH SATUAN", qty if qty > 0 else 0, columns)
+                self._set(ws, r, "FLAG BMT SEMENTARA", "", columns)
+                self._set(ws, r, "KODE KOMODITI CUKAI", "", columns)
+                self._set(ws, r, "KODE SUB KOMODITI CUKAI", "", columns)
+                self._set(ws, r, "FLAG TIS", "", columns)
+                self._set(ws, r, "FLAG PELEKATAN", "", columns)
+                self._set(ws, r, "KODE KEMASAN", "", columns)
+                self._set(ws, r, "JUMLAH KEMASAN", 0, columns)
+                r += 1
 
     # VERSI
 
