@@ -12,7 +12,7 @@ _cache_loaded = False
 
 
 def _default_rates() -> Dict[str, float]:
-    return {"bm": 0.0, "ppn": 11.0, "pph": 0.0, "hs_code": None, "found": False}
+    return {"bm": 0.0, "ppn": 12.0, "pph": 2.5, "hs_code": None, "found": False}
 
 
 def _ensure_master_loaded() -> None:
@@ -24,14 +24,13 @@ def _ensure_master_loaded() -> None:
 
 
 def _load_master() -> None:
-    # Load MASTER CEK HS CODE.xlsx into the module cache.
+    # Load hs_code_tax_mapping.json into the module cache.
     try:
-        import openpyxl
+        import json
 
         search_paths = [
-            Path(__file__).parent.parent.parent / "MASTER CEK HS CODE.xlsx",
-            Path(__file__).parent.parent.parent.parent / "MASTER CEK HS CODE.xlsx",
-            Path.cwd() / "MASTER CEK HS CODE.xlsx",
+            Path(__file__).parent / "data" / "hs_code_tax_mapping.json",
+            Path(__file__).parent.parent.parent / "data" / "hs_code_tax_mapping.json",
         ]
 
         path = None
@@ -42,48 +41,34 @@ def _load_master() -> None:
 
         if path is None:
             logger.warning(
-                f"MASTER CEK HS CODE.xlsx not found in {search_paths}. "
+                f"hs_code_tax_mapping.json not found in {search_paths}. "
                 "HS lookup will return zeros."
             )
             return
 
-        wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
-        sheet_name = (
-            "DATA MASTER HS CODE"
-            if "DATA MASTER HS CODE" in wb.sheetnames
-            else "CEK HS"
-        )
-        ws = wb[sheet_name]
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
         entries = 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for hs_str, rates in data.items():
             try:
-                # col[3] = HS code, col[6] = BM, col[7] = PPN, col[8] = PPH
-                raw_hs = row[3]
-                if raw_hs is None:
-                    continue
-                code_str = str(raw_hs).strip()
-                code_int = int(code_str[:8].ljust(8, "0"))
+                code_int = int(hs_str)
 
-                bm_raw = row[6] if len(row) > 6 else None
-                ppn_raw = row[7] if len(row) > 7 else None
-                pph_raw = row[8] if len(row) > 8 else None
+                def parse_pct(val):
+                    if isinstance(val, str) and val.endswith("%"):
+                        return float(val.rstrip("%"))
+                    return float(val) if val else 0.0
 
-                bm = float(bm_raw) * 100 if bm_raw is not None else 0.0
-                ppn = float(ppn_raw) * 100 if ppn_raw is not None else 0.0
-                pph = float(pph_raw) * 100 if pph_raw is not None else 0.0
+                bm = parse_pct(rates.get("BM", "0%"))
+                ppn = parse_pct(rates.get("PPN", "0%"))
+                pph = parse_pct(rates.get("PPH", "0%"))
 
-                _cache[code_int] = (
-                    round(bm, 4),
-                    round(ppn, 4),
-                    round(pph, 4),
-                )
+                _cache[code_int] = (bm, ppn, pph)
                 entries += 1
-            except (ValueError, TypeError, IndexError):
+            except (ValueError, TypeError):
                 continue
 
-        wb.close()
-        logger.info(f"HS master loaded: {entries} entries from '{sheet_name}' sheet of {path.name}")
+        logger.info(f"HS master loaded: {entries} entries from {path.name}")
     except Exception as e:
         logger.warning(f"Failed to load HS master: {e}. HS lookup will return zeros.")
 

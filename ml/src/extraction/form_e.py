@@ -350,45 +350,39 @@ def _ensure_tariff_loaded() -> None:
     if _TARIFF_LOADED:
         return
     try:
-        import openpyxl
+        import json
         from pathlib import Path
 
         search_paths = [
-            Path(__file__).parent.parent.parent / "MASTER CEK HS CODE.xlsx",
-            Path(__file__).parent.parent.parent.parent / "MASTER CEK HS CODE.xlsx",
+            Path(__file__).parent / "data" / "hs_code_tax_mapping.json",
+            Path(__file__).parent.parent.parent / "data" / "hs_code_tax_mapping.json",
         ]
         for path in search_paths:
             if path.exists():
-                wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
-                sheet_name = ("DATA MASTER HS CODE"
-                              if "DATA MASTER HS CODE" in wb.sheetnames
-                              else "CEK HS")
-                ws = wb[sheet_name]
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row or row[3] is None:
-                        continue
+                for hs_str, rates in data.items():
                     try:
-                        hs_code = int(str(row[3]).strip()[:8])
-                        bm_raw = row[6] if len(row) > 6 else None
-                        ppn_raw = row[7] if len(row) > 7 else None
-                        pph_raw = row[8] if len(row) > 8 else None
-                        bm = float(bm_raw) if bm_raw is not None else 0.0
-                        ppn = float(ppn_raw) if ppn_raw is not None else 0.0
-                        pph = float(pph_raw) if pph_raw is not None else 0.0
+                        hs_code = int(hs_str)
+                        # Parse percentage strings like "10.0%" -> float 10.0
+                        def parse_pct(val):
+                            if isinstance(val, str) and val.endswith("%"):
+                                return float(val.rstrip("%"))
+                            return float(val) if val else 0.0
+
                         _TARIFF_CACHE[hs_code] = {
-                            "bm": round(bm * 100, 4),
-                            "ppn": round(ppn * 100, 4),
-                            "pph": round(pph * 100, 4),
+                            "bm": parse_pct(rates.get("BM", "0%")),
+                            "ppn": parse_pct(rates.get("PPN", "0%")),
+                            "pph": parse_pct(rates.get("PPH", "0%")),
                             "found": True,
                         }
-                    except (ValueError, TypeError, IndexError):
+                    except (ValueError, TypeError):
                         continue
-                wb.close()
                 logger.info(f"HS tariff loaded: {len(_TARIFF_CACHE)} entries")
                 _TARIFF_LOADED = True
                 return
-        logger.warning("MASTER CEK HS CODE.xlsx not found")
+        logger.warning("hs_code_tax_mapping.json not found")
     except Exception as e:
         logger.warning(f"Failed to load HS tariff: {e}")
     _TARIFF_LOADED = True
@@ -400,10 +394,11 @@ def _get_tariff(hs_code: int) -> Dict[str, Any]:
     if hs_code in _TARIFF_CACHE:
         return _TARIFF_CACHE[hs_code]
 
+    # Try 4-digit prefix match
     prefix4 = hs_code // 10000
     for cached, rates in _TARIFF_CACHE.items():
         if cached // 10000 == prefix4:
             logger.info(f"HS {hs_code}: using 4-digit prefix match {cached}")
             return rates
 
-    return {"bm": 0.0, "ppn": 11.0, "pph": 0.0, "found": False}
+    return {"bm": 0.0, "ppn": 12.0, "pph": 2.5, "found": False}
