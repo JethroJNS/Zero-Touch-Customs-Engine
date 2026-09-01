@@ -31,6 +31,9 @@ services:
     volumes:
       - ./src:/app/src
       - ./ml:/app/ml
+      - ./training_dataset:/app/training_dataset
+      - ./data:/app/data
+      - ./ml/models:/app/ml/models
 
 volumes:
   postgres_data:

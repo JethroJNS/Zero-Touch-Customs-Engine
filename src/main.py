@@ -1,5 +1,15 @@
-import logging
+import sys
+import os
 from pathlib import Path
+
+_SRC_DIR = Path(__file__).parent
+_WEB_ROOT = _SRC_DIR.parent
+if str(_WEB_ROOT) not in sys.path:
+    sys.path.insert(0, str(_WEB_ROOT))
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
+
+import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -70,12 +80,14 @@ def create_app() -> FastAPI:
     from routes.dashboard import router as dashboard_router
     from routes.pages import router as pages_router
     from routes.ceisa_routes import router as ceisa_router
+    from routes.training import router as training_router
 
     app.include_router(shipments_router)
     app.include_router(activities_router)
     app.include_router(dashboard_router)
     app.include_router(pages_router)
     app.include_router(ceisa_router)
+    app.include_router(training_router)
 
     # Health check
     @app.get("/health", tags=["health"])
