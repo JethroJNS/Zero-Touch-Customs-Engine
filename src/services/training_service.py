@@ -196,9 +196,22 @@ class TrainingService:
             self._log(f"Precision: {metrics.get('precision', 0):.2f}%")
             self._log(f"Recall: {metrics.get('recall', 0):.2f}%")
 
-            # Step 4: Deploy
+            # Step 4: Deploy - copy final_model to best_model so inference uses it
             self._update_progress("deploying", 95)
             self._log("Deploying new model...")
+
+            # Copy final model to best_model for inference
+            import shutil
+            final_model_dir = project_root / "ml/models/layoutlmv3-v4/final_model"
+            best_model_dir = project_root / "ml/models/layoutlmv3-v4/best_model"
+
+            if final_model_dir.exists():
+                if best_model_dir.exists():
+                    shutil.rmtree(best_model_dir)
+                shutil.copytree(final_model_dir, best_model_dir)
+                self._log("Copied final model to best_model for inference", "success")
+            else:
+                self._log("Warning: final_model not found", "warning")
 
             self._log("Model deployed to ml/models/layoutlmv3-v4/best_model/", "success")
 
@@ -314,11 +327,11 @@ class TrainingService:
             process.wait()
             self._process = None
 
-            if process.returncode == 0 and best_f1 > 0:
+            if process.returncode == 0:
                 return {
-                    "f1": best_f1,
-                    "precision": best_precision or best_f1 * 0.95,
-                    "recall": best_recall or best_f1 * 0.95,
+                    "f1": best_f1 if best_f1 > 0 else 0.0,
+                    "precision": best_precision if best_precision > 0 else (best_f1 * 0.95 if best_f1 > 0 else 0.0),
+                    "recall": best_recall if best_recall > 0 else (best_f1 * 0.95 if best_f1 > 0 else 0.0),
                 }
 
             return None

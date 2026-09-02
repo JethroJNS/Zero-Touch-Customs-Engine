@@ -25,6 +25,8 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      HF_HOME: /app/.hf_cache
+      TRANSFORMERS_CACHE: /app/.hf_cache
     depends_on:
       db:
         condition: service_healthy
@@ -32,8 +34,10 @@ services:
       - ./src:/app/src
       - ./ml:/app/ml
       - ./training_dataset:/app/training_dataset
+      - ./training:/app/training
       - ./data:/app/data
       - ./ml/models:/app/ml/models
+      - ./.hf_cache:/app/.hf_cache
 
 volumes:
   postgres_data:

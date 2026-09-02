@@ -48,11 +48,15 @@ RUN pip install --no-cache-dir \
     pymupdf \
     Pillow \
     "numpy<2" \
-    regex
+    regex \
+    seqeval \
+    tqdm
 
 COPY src/ /app/src/
 COPY ml/ /app/ml/
+COPY training/ /app/training/
 COPY download_model.py /app/download_model.py
+COPY finetune_v4.py /app/finetune_v4.py
 
 ENV PYTHONPATH=/app/src:/app:${PYTHONPATH}
 ENV PYTHONUNBUFFERED=1

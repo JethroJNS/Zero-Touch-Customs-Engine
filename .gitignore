@@ -109,3 +109,22 @@ downloads/
 *.bak
 .cache/
 *.pid
+
+# HuggingFace Model Cache
+.hf_cache/
+
+# Training Data
+data/
+
+# Trained Model Weights (should be downloaded, not committed)
+ml/models/layoutlmv3-v4/best_model/*.safetensors
+ml/models/layoutlmv3-v4/best_model/*.bin
+ml/models/layoutlmv3-v4/best_model/model.safetensors
+ml/models/layoutlmv3-v4/best_model/merges.txt
+ml/models/layoutlmv3-v4/best_model/vocab.json
+ml/models/layoutlmv3-v4/best_model/special_tokens_map.json
+ml/models/layoutlmv3-v4/final_model/
+ml/models/layoutlmv3-v4/history.json
+
+# Training dataset
+training_dataset/

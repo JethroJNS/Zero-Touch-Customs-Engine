@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from seqeval.metrics import classification_report, f1_score, precision_score, recall_score
-from torch.amp import autocast, GradScaler
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import (
@@ -142,7 +142,7 @@ def evaluate_entity_f1(model, dataloader, device, id_to_label: Dict[int, str],
         bbox = batch["bbox"].to(device)
         label_strs: List[List[str]] = batch["label_str"]
 
-        with autocast('cuda', enabled=torch.cuda.is_available()):
+        with autocast(enabled=torch.cuda.is_available()):
             outputs = model(input_ids=input_ids, attention_mask=attention_mask, bbox=bbox)
         preds = outputs.logits.argmax(dim=-1).cpu().numpy()
 
@@ -208,7 +208,7 @@ def train_epoch(model, dataloader, optimizer, scheduler, device,
 
         optimizer.zero_grad()
 
-        with autocast('cuda', enabled=use_fp16):
+        with autocast(enabled=use_fp16):
             outputs = model(input_ids=input_ids, attention_mask=attention_mask, bbox=bbox)
             logits = outputs.logits
 
@@ -261,6 +261,12 @@ def set_seed(seed: int):
 
 
 def main():
+    # Setup HuggingFace cache to persist across runs
+    import os
+    cache_dir = os.environ.get("HF_HOME", "/app/.hf_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    os.environ["HF_HOME"] = cache_dir
+    os.environ["TRANSFORMERS_CACHE"] = cache_dir
     args = parse_args()
     set_seed(args.seed)
 
@@ -323,6 +329,12 @@ def main():
                             num_workers=0, collate_fn=collate_fn)
 
     logger.info(f"Loading model: {args.model_name}")
+    # Enable transformers logging to show download progress
+    import os
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+    logging.getLogger("transformers").setLevel(logging.INFO)
+    logging.getLogger("huggingface_hub").setLevel(logging.INFO)
+    logger.info("Downloading model from HuggingFace (this may take a few minutes on first run)...")
     model = AutoModelForTokenClassification.from_pretrained(
         args.model_name, num_labels=num_labels,
         id2label=id_to_label, label2id=label_to_id,
@@ -350,7 +362,7 @@ def main():
     )
     logger.info(f"Steps: {total_steps} total, {warmup_steps} warmup, {args.grad_accum} grad accum")
 
-    scaler = GradScaler('cuda', enabled=use_fp16)
+    scaler = GradScaler(enabled=use_fp16 and torch.cuda.is_available())
 
     # Training loop
     best_f1 = 0.0
