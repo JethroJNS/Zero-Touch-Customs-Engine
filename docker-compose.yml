@@ -25,19 +25,29 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      HF_HOME: /app/.hf_cache
-      TRANSFORMERS_CACHE: /app/.hf_cache
+      # Kurangi thread untuk semua library ML
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      PYTORCH_NUM_THREADS: "1"
+      PADDLE_CPU_THREADS: "1"
+      PADDLE_REC_BATCH_NUM: "4"
+      PADDLE_DET_LIMIT: "640"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./src:/app/src
       - ./ml:/app/ml
-      - ./training_dataset:/app/training_dataset
       - ./training:/app/training
-      - ./data:/app/data
+      - ./training_dataset:/app/training_dataset
       - ./ml/models:/app/ml/models
-      - ./.hf_cache:/app/.hf_cache
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
 volumes:
   postgres_data:

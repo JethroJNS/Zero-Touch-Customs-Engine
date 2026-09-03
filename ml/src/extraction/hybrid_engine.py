@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any, Union
+
+# Batasi PyTorch threads SEBELUM import torch
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("PYTORCH_NUM_THREADS", "1")
+
+# Lazy import torch — hanya jika belum di-import
+if "torch" not in globals():
+    try:
+        import torch
+        torch.set_num_threads(1)
+        torch.set_flush_denormal(True)  # Matikan denormal floats (lebih cepat, kurang memory)
+    except Exception:
+        pass
 
 from config import (
     DOC_TYPE_CI, DOC_TYPE_PL, DOC_TYPE_BL,
