@@ -16,7 +16,14 @@ router = APIRouter(prefix="/api/training", tags=["training"])
 
 # Paths - use absolute path based on this file's location
 _SCRIPT_DIR = Path(__file__).parent  # src/routes/
-_PROJECT_ROOT = _SCRIPT_DIR.parent.parent  # website root
+# Try multiple possible locations for training_dataset
+_POSSIBLE_ROOTS = [
+    _SCRIPT_DIR.parent.parent,                    # .../Zero-Touch-Customs-Engine/
+    _SCRIPT_DIR.parent.parent.parent,             # .../Kerja Praktik/
+    Path(__file__).resolve().parent.parent.parent,  # Absolute fallback
+]
+# Use first existing directory
+_PROJECT_ROOT = next((r for r in _POSSIBLE_ROOTS if r.exists()), _SCRIPT_DIR.parent.parent)
 DATASET_DIR = _PROJECT_ROOT / "training_dataset"
 
 
