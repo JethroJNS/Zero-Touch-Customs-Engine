@@ -44,6 +44,8 @@ def create_app() -> FastAPI:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _create_tables)
         await loop.run_in_executor(None, _seed_data)
+        # Pre-warm PaddleOCR agar model di-download SEBELUM request pertama
+        await loop.run_in_executor(None, _prewarm_ocr)
 
     def _create_tables():
         try:
@@ -64,18 +66,55 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to seed data: {e}")
 
+    def _prewarm_ocr():
+        """Pre-warm PaddleOCR engine at startup so model download happens
+        BEFORE any extraction request (avoids memory spike during pipeline)."""
+        import gc
+        import os
+        try:
+            # Set torch thread limit SEBELUM import torch
+            os.environ.setdefault("OMP_NUM_THREADS", "1")
+            os.environ.setdefault("MKL_NUM_THREADS", "1")
+            os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+            import torch
+            torch.set_num_threads(1)
+            torch.set_flush_denormal(True)  # Matikan denormal floats (lebih cepat, hemat memory)
+
+            logger.info("Pre-warming OCR engine (downloading PaddleOCR models if needed)...")
+            from ml.src.ocr.engine import OCREngine
+            engine = OCREngine()
+            # Run a dummy OCR to force model download and loading
+            dummy_img = None
+            try:
+                import numpy as np
+                from PIL import Image
+                # 1x1 white image untuk warm-up
+                dummy_img = Image.new("RGB", (100, 20), color=(255, 255, 255))
+                engine._process_image(dummy_img, 0)
+                logger.info("OCR engine pre-warmed successfully.")
+            except Exception as e:
+                logger.warning(f"OCR warm-up inference failed (non-fatal): {e}")
+            finally:
+                del dummy_img
+                gc.collect()
+        except Exception as e:
+            logger.error(f"Failed to pre-warm OCR engine: {e}")
+
     # Register routers
     from routes.shipments import router as shipments_router
     from routes.activities import router as activities_router
     from routes.dashboard import router as dashboard_router
     from routes.pages import router as pages_router
     from routes.ceisa_routes import router as ceisa_router
+    from routes.training import router as training_router
 
     app.include_router(shipments_router)
     app.include_router(activities_router)
     app.include_router(dashboard_router)
     app.include_router(pages_router)
     app.include_router(ceisa_router)
+    app.include_router(training_router)
 
     # Health check
     @app.get("/health", tags=["health"])

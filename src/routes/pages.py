@@ -53,3 +53,12 @@ async def serve_activity():
     if path.exists():
         return FileResponse(str(path), media_type="text/html")
     raise HTTPException(status_code=404, detail="activity.html not found")
+
+
+@router.get("/model-training")
+async def serve_model_training():
+    # Serve the model training page.
+    path = _get_template_path("model_training.html")
+    if path.exists():
+        return FileResponse(str(path), media_type="text/html")
+    raise HTTPException(status_code=404, detail="model_training.html not found")

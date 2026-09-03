@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Training - Zero-Touch Customs Engine</title>
+  <link rel="stylesheet" href="/static/css/shared.css">
+  <link rel="stylesheet" href="/static/css/model_training.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="/static/images/logo.png" alt="Logo" class="sidebar-logo" />
+        <div class="sidebar-brand">
+          <h1 class="sidebar-title">Zero-Touch</h1>
+          <span class="sidebar-subtitle">Customs Engine</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="/" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+            <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="/smart-upload" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Smart Upload</span>
+        </a>
+        <a href="/declarations" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 5v6c0 1.657 4.03 3 9 3s9-1.343 9-3V5" stroke="currentColor" stroke-width="2"/>
+            <path d="M3 11v6c0 1.657 4.03 3 9 3s9-1.343 9-3v-6" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Declarations</span>
+        </a>
+        <a href="/activity" class="nav-item">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Activity</span>
+        </a>
+        <a href="/model-training" class="nav-item active">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Model Training</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status">
+          <div class="status-dot online"></div>
+          <span>System Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-container">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1>Model Training</h1>
+          <p>Halaman untuk melatih ulang model Machine Learning (LayoutLMv3) menggunakan dataset yang tersedia. Training akan berjalan di background dan model baru akan otomatis menggantikan model lama.</p>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="total-datasets">0</div>
+            <div class="stat-label">Total Dataset</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="complete-datasets">0</div>
+            <div class="stat-label">Lengkap (CI+PL+BL+XLSX)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="partial-datasets">0</div>
+            <div class="stat-label">Sebagian</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="missing-datasets">0</div>
+            <div class="stat-label">Tidak Lengkap</div>
+          </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+          <button class="btn btn-primary" id="retrain-btn">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Retrain Model
+          </button>
+          <button class="btn btn-secondary" id="add-dataset-btn">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none">
+              <path d="M12 4v16m8-8H4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            Tambah Dataset
+          </button>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section">
+          <div class="progress-header">
+            <h3>Progress Training</h3>
+            <button class="btn btn-danger" id="cancel-btn" onclick="cancelTraining()" style="padding: 6px 12px; font-size: 12px;">
+              Batalkan
+            </button>
+          </div>
+          <div class="progress-body">
+            <div class="progress-steps">
+              <div class="progress-step" id="step-preparing">
+                <div class="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <span class="step-label">Preparing<br>Dataset</span>
+              </div>
+              <div class="progress-step" id="step-training">
+                <div class="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <span class="step-label">Training<br>Model</span>
+              </div>
+              <div class="progress-step" id="step-evaluating">
+                <div class="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <span class="step-label">Evaluating<br>& Validating</span>
+              </div>
+              <div class="progress-step" id="step-deploying">
+                <div class="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <span class="step-label">Deploying<br>Model</span>
+              </div>
+              <div class="progress-step" id="step-completed">
+                <div class="step-icon">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <span class="step-label">Completed</span>
+              </div>
+            </div>
+
+            <div class="progress-details">
+              <h4>Detail Progress</h4>
+              <div class="training-metrics" id="training-metrics" style="display: none;"></div>
+              <div class="progress-bar-container">
+                <div class="progress-bar-label">
+                  <span>Progress</span>
+                  <span id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-bar-fill" id="progress-fill" style="width: 0%;"></div>
+                </div>
+              </div>
+              <div class="progress-log" id="progress-log">
+                <p><span class="log-time">[--:--:--]</span> <span class="log-info">Menunggu training...</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dataset List -->
+        <div class="content-card">
+          <div class="card-header">
+            <h3>Daftar Dataset Training</h3>
+            <button class="btn btn-secondary" onclick="loadDatasets()" style="padding: 6px 12px; font-size: 12px;">
+              Refresh
+            </button>
+          </div>
+          <div class="card-body">
+            <table class="dataset-table">
+              <thead>
+                <tr>
+                  <th>No. AJU</th>
+                  <th>CI</th>
+                  <th>PL</th>
+                  <th>BL</th>
+                  <th>XLSX</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="dataset-tbody">
+                <tr>
+                  <td colspan="7" class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <h3>Memuat dataset...</h3>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions-card">
+          <div class="instructions-header">
+            <h3>Petunjuk Training Ulang</h3>
+          </div>
+          <div class="instructions-body">
+            <h4>Format Dataset</h4>
+            <p>Setiap shipment harus dalam folder terpisah dengan format berikut:</p>
+            <div class="folder-tree">
+              <div><span class="folder">training_dataset/</span></div>
+              <div style="padding-left: 20px;"><span class="folder">{No. AJU}/</span></div>
+              <div style="padding-left: 40px;"><span class="file">{No. AJU}_CI.pdf</span> &nbsp;# Commercial Invoice</div>
+              <div style="padding-left: 40px;"><span class="file">{No. AJU}_PL.pdf</span> &nbsp;# Packing List</div>
+              <div style="padding-left: 40px;"><span class="file">{No. AJU}_BL.pdf</span> &nbsp;# Bill of Lading</div>
+              <div style="padding-left: 40px;"><span class="file">{No. AJU}.xlsx</span> &nbsp;&nbsp;# Ground Truth CEISA Excel</div>
+            </div>
+
+            <h4>Cara Menambahkan Dataset</h4>
+            <ol>
+              <li>Siapkan folder shipment dengan 4 file: CI, PL, BL, dan XLSX</li>
+              <li>Tekan tombol <code>Tambah Dataset</code> di atas</li>
+              <li>Pilih folder yang berisi file-file shipment (4 file: CI, PL, BL, XLSX)</li>
+              <li>Sistem akan otomatis mendeteksi dan menambahkan ke training set</li>
+            </ol>
+
+            <h4>Cara Melakukan Training</h4>
+            <ol>
+              <li>Pastikan dataset sudah lengkap (CI + PL + BL + XLSX)</li>
+              <li>Tekan tombol <code>Retrain Model</code></li>
+              <li>Training akan berjalan di background (bisa menutup halaman)</li>
+              <li>Model baru akan otomatis menggantikan model lama setelah training selesai</li>
+            </ol>
+
+            <h4>Parameter Training</h4>
+            <p>Training menggunakan parameter optimal:</p>
+<pre><code>Epochs: 40 (dengan early stopping)
+Learning Rate: 2e-5
+Batch Size: 4
+Entity Weight: 5.0
+O Weight: 0.1
+Train/Val Split: 80/20
+Patience: 10 epochs</code></pre>
+
+            <div class="warning-box">
+              <p><strong>Perhatian:</strong> Training model membutuhkan waktu 1-2 jam tergantung jumlah dataset dan spesifikasi hardware. Pastikan laptop/PC tidak dalam mode sleep selama training.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add Dataset Modal -->
+  <div id="add-dataset-modal" class="modal-overlay">
+    <div class="modal" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3>Tambah Dataset Baru</h3>
+        <button class="modal-close" onclick="closeAddDatasetModal()">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M6 18L18 6M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="upload-aju-input">Nama AJU / No. Shipment</label>
+          <input type="text" id="upload-aju-input" placeholder="Contoh: AJU20240001" required>
+        </div>
+        <p>Pilih file CI, PL, BL (PDF) dan data (XLSX) untuk satu shipment.</p>
+        <div class="upload-file-inputs">
+          <div class="upload-file-item">
+            <label>CI (Invoice)</label>
+            <input type="file" id="file-ci" accept=".pdf">
+          </div>
+          <div class="upload-file-item">
+            <label>PL (Packing List)</label>
+            <input type="file" id="file-pl" accept=".pdf">
+          </div>
+          <div class="upload-file-item">
+            <label>BL (Bill of Lading)</label>
+            <input type="file" id="file-bl" accept=".pdf">
+          </div>
+          <div class="upload-file-item">
+            <label>Data (XLSX)</label>
+            <input type="file" id="file-xlsx" accept=".xlsx,.xls">
+          </div>
+        </div>
+        <div class="upload-progress" id="upload-progress" style="display: none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddDatasetModal()">Batal</button>
+        <button class="btn btn-primary" id="upload-btn" onclick="submitDatasetUpload()">Upload Dataset</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/model_training.js"></script>
+</body>
+</html>

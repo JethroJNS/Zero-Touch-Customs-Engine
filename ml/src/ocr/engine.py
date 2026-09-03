@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 import fitz  # PyMuPDF
+import gc
 
 from config import OCR_CONFIG
 
@@ -178,16 +179,29 @@ class OCREngine:
 
         # Only pass lang to avoid unsupported args in new PaddleOCR versions
         lang = self.config.get("lang", "en")
-        self._ocr = PaddleOCR(lang=lang)
-        logger.info("OCREngine initialized (CPU mode)")
+        rec_batch_num = int(os.environ.get("PADDLE_REC_BATCH_NUM", "4"))
+        det_limit_side_len = int(os.environ.get("PADDLE_DET_LIMIT", "640"))
+        cpu_threads = int(os.environ.get("PADDLE_CPU_THREADS", "1"))
+        self._ocr = PaddleOCR(
+            lang=lang,
+            use_angle_cls=False,        # Nonaktifkan angle classifier untuk speed & memory
+            use_gpu=False,
+            cpu_threads=cpu_threads,    # Batasi threads (default 1)
+            rec_batch_num=rec_batch_num,  # Kurangi batch untuk hemat memory
+            det_limit_side_len=det_limit_side_len,  # Kurangi detection resolution
+        )
+        logger.info(f"OCREngine initialized (CPU, threads={cpu_threads}, rec_batch={rec_batch_num}, det_limit={det_limit_side_len})")
 
-    def _render_pdf_page(self, pdf_doc, page_num: int, dpi: int = 300) -> Image.Image:
-        # Konversi PDF ke PIL Image.
+    def _render_pdf_page(self, pdf_doc, page_num: int, dpi: int = 150) -> Image.Image:
+        # Konversi PDF ke PIL Image. DPI 150 sudah cukup untuk OCR dokumen.
         page = pdf_doc[page_num]
         zoom = dpi / 72.0
         mat = fitz.Matrix(zoom, zoom)
         pix = page.get_pixmap(matrix=mat, alpha=False)
         img_data = pix.tobytes("png")
+        # Pixmap tidak lagi diperlukan, hapus segera
+        del pix
+        gc.collect()
         return Image.open(io.BytesIO(img_data))
 
     def _words_to_lines(
@@ -254,18 +268,23 @@ class OCREngine:
 
     def _process_image(self, img: Image.Image, page_num: int = 0) -> OCRPage:
         img_array = np.array(img.convert("RGB"))
-        result = self._ocr.ocr(img_array)
+        try:
+            result = self._ocr.ocr(img_array)
 
-        words: List = []
-        if result and result[0]:
-            for line_result in result[0]:
-                if line_result:
-                    words.append(line_result)
+            words: List = []
+            if result and result[0]:
+                for line_result in result[0]:
+                    if line_result:
+                        words.append(line_result)
 
-        lines, ocr_words = self._words_to_lines(
-            words, img.width, img.height, page_num
-        )
-        full_text = "\n".join(l.text for l in lines)
+            lines, ocr_words = self._words_to_lines(
+                words, img.width, img.height, page_num
+            )
+            full_text = "\n".join(l.text for l in lines)
+        finally:
+            # Selalu bebaskan memory array
+            del img_array
+            gc.collect()
 
         return OCRPage(
             page_num=page_num,
@@ -291,14 +310,24 @@ class OCREngine:
         doc = fitz.open(file_path)
         pages = []
 
-        for page_num in range(len(doc)):
+        # Batasi maksimal halaman untukhindari OOM pada PDF besar
+        max_pages = int(os.environ.get("MAX_PDF_PAGES", "30"))
+        total = min(len(doc), max_pages)
+
+        for page_num in range(total):
             img = self._render_pdf_page(doc, page_num)
             page = self._process_image(img, page_num)
             page.width = float(img.width)
             page.height = float(img.height)
             pages.append(page)
+            del img  # Bebaskan memory segera
+
+            # Periodik GC setiap 5 halaman
+            if (page_num + 1) % 5 == 0:
+                gc.collect()
 
         doc.close()
+        gc.collect()
         logger.info(f"PDF {file_path.name}: {len(pages)} pages OCR'd")
 
         return OCRResult(
