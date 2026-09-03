@@ -57,6 +57,7 @@ COPY ml/ /app/ml/
 COPY training/ /app/training/
 COPY training_dataset/ /app/training_dataset/
 COPY download_model.py /app/download_model.py
+COPY download_model_hf.py /app/download_model_hf.py
 COPY finetune_v4.py /app/finetune_v4.py
 
 ENV PYTHONPATH=/app/src:/app:${PYTHONPATH}

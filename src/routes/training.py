@@ -86,28 +86,8 @@ def get_dataset_status(files: Dict[str, bool]) -> str:
 def list_all_datasets() -> List[DatasetInfo]:
     datasets = []
 
-    # DEBUG: Log the actual path being used
-    logger.info(f"[DEBUG] DATASET_DIR = {DATASET_DIR}")
-    logger.info(f"[DEBUG] DATASET_DIR exists = {DATASET_DIR.exists()}")
-    logger.info(f"[DEBUG] _PROJECT_ROOT = {_PROJECT_ROOT}")
-    logger.info(f"[DEBUG] _PROJECT_ROOT exists = {_PROJECT_ROOT.exists()}")
-
-    if DATASET_DIR.exists():
-        # List all items for debugging
-        items = list(DATASET_DIR.iterdir())
-        logger.info(f"[DEBUG] Items in DATASET_DIR: {[i.name for i in items]}")
-
     if not DATASET_DIR.exists():
         logger.warning(f"Dataset directory does not exist at {DATASET_DIR}")
-        # List possible locations for debugging
-        for i, root in enumerate(_POSSIBLE_ROOTS):
-            logger.info(f"[DEBUG] Possible root {i}: {root} (exists={root.exists()})")
-            if root.exists():
-                try:
-                    contents = list(root.iterdir())
-                    logger.info(f"[DEBUG] Contents of {root}: {[c.name for c in contents]}")
-                except Exception as e:
-                    logger.info(f"[DEBUG] Cannot list {root}: {e}")
         return datasets
 
     for aju_dir in sorted(DATASET_DIR.iterdir()):

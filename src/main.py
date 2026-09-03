@@ -44,6 +44,8 @@ def create_app() -> FastAPI:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _create_tables)
         await loop.run_in_executor(None, _seed_data)
+        # Download LayoutLM model from Google Drive FIRST (before OCR warm-up)
+        await loop.run_in_executor(None, _download_layoutlm_model)
         # Pre-warm PaddleOCR agar model di-download SEBELUM request pertama
         await loop.run_in_executor(None, _prewarm_ocr)
 
@@ -65,6 +67,61 @@ def create_app() -> FastAPI:
                 db.close()
         except Exception as e:
             logger.error(f"Failed to seed data: {e}")
+
+    def _download_layoutlm_model():
+        import os
+        try:
+            model_repo = os.environ.get("MODEL_REPO", "")
+            model_path_env = os.environ.get("MODEL_PATH", "")
+            default_model_path = Path(__file__).parent.parent / "ml" / "models" / "layoutlmv3-v4" / "best_model"
+
+            if model_path_env:
+                model_dir = Path(model_path_env)
+            else:
+                model_dir = default_model_path
+
+            # Check if model already exists
+            model_file = model_dir / "model.safetensors"
+            if model_file.exists():
+                size_mb = model_file.stat().st_size / (1024 * 1024)
+                if size_mb > 100:
+                    logger.info(f"LayoutLMv3 model already exists at {model_dir} ({size_mb:.1f} MB)")
+                    return
+                else:
+                    logger.warning(f"LayoutLMv3 model file too small ({size_mb:.1f} MB), re-downloading")
+
+            if not model_repo:
+                logger.warning("MODEL_REPO not set. Skipping model download.")
+                logger.warning("Text-based extraction will be used instead.")
+                return
+
+            logger.info(f"Downloading LayoutLMv3 model from HuggingFace: {model_repo}")
+
+            # Use subprocess to run the download script
+            import subprocess
+            import sys
+
+            script_path = Path(__file__).parent.parent / "download_model_hf.py"
+            if not script_path.exists():
+                logger.warning(f"Download script not found at {script_path}")
+                return
+
+            result = subprocess.run(
+                [sys.executable, str(script_path), "--repo", model_repo, "--target-dir", str(model_dir)],
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minutes timeout
+            )
+
+            if result.returncode == 0:
+                logger.info("LayoutLMv3 model downloaded successfully from HuggingFace.")
+            else:
+                logger.warning(f"Failed to download model: {result.stderr}")
+
+        except subprocess.TimeoutExpired:
+            logger.error("Model download timed out.")
+        except Exception as e:
+            logger.error(f"Failed to download LayoutLMv3 model: {e}")
 
     def _prewarm_ocr():
         """Pre-warm PaddleOCR engine at startup so model download happens
