@@ -102,6 +102,12 @@ def list_all_datasets() -> List[DatasetInfo]:
         # List possible locations for debugging
         for i, root in enumerate(_POSSIBLE_ROOTS):
             logger.info(f"[DEBUG] Possible root {i}: {root} (exists={root.exists()})")
+            if root.exists():
+                try:
+                    contents = list(root.iterdir())
+                    logger.info(f"[DEBUG] Contents of {root}: {[c.name for c in contents]}")
+                except Exception as e:
+                    logger.info(f"[DEBUG] Cannot list {root}: {e}")
         return datasets
 
     for aju_dir in sorted(DATASET_DIR.iterdir()):
