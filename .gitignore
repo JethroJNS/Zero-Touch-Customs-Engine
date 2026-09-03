@@ -125,6 +125,3 @@ ml/models/layoutlmv3-v4/best_model/vocab.json
 ml/models/layoutlmv3-v4/best_model/special_tokens_map.json
 ml/models/layoutlmv3-v4/final_model/
 ml/models/layoutlmv3-v4/history.json
-
-# Training dataset
-training_dataset/
