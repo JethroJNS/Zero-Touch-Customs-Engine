@@ -55,6 +55,7 @@ RUN pip install --no-cache-dir \
 COPY src/ /app/src/
 COPY ml/ /app/ml/
 COPY training/ /app/training/
+COPY training_dataset/ /app/training_dataset/
 COPY download_model.py /app/download_model.py
 COPY finetune_v4.py /app/finetune_v4.py
 
