@@ -47,10 +47,12 @@ RUN pip install --no-cache-dir \
     openpyxl \
     pymupdf \
     Pillow \
-    "numpy<2" \
+    "numpy>=1.24.0,<2.0" \
     regex \
     seqeval \
     tqdm
+
+RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
 COPY src/ /app/src/
 COPY ml/ /app/ml/
