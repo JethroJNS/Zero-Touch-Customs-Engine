@@ -23,24 +23,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first
 COPY requirements.txt /app/requirements.txt
 
+# Install core scientific packages FIRST with numpy 2.x support
+# shapely 2.0+ is required for numpy 2.x compatibility
+RUN pip install --no-cache-dir \
+    "numpy>=2.0.0" \
+    "scipy>=1.14.0" \
+    "scikit-image>=0.24.0" \
+    "shapely>=2.0.0"
+
 # Install PyTorch CPU
 RUN pip install --no-cache-dir \
     torch==2.1.0 \
     torchvision==0.16.0 \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
-# CRITICAL: Install numpy FIRST and create constraint file
-RUN pip install --no-cache-dir "numpy>=1.24.0,<2.0" && \
-    pip freeze | grep numpy > /tmp/numpy_ver.txt && \
-    cat /tmp/numpy_ver.txt
-
-# Install scipy and scikit-image FIRST with numpy constraint (they need compatible numpy)
-RUN pip install --no-cache-dir \
-    scipy==1.11.4 \
-    scikit-image==0.22.0 \
-    --constraint /tmp/numpy_ver.txt
-
-# Install other dependencies that don't conflict
+# Install other dependencies
 RUN pip install --no-cache-dir \
     fastapi \
     uvicorn[standard] \
@@ -57,31 +54,17 @@ RUN pip install --no-cache-dir \
     pymupdf \
     regex \
     seqeval \
-    tqdm
+    tqdm \
+    Pillow
+
+# Install opencv-python-headless (compatible with numpy 2.x)
+RUN pip install --no-cache-dir opencv-python-headless>=4.10.0
 
 # Install paddlepaddle
 RUN pip install --no-cache-dir paddlepaddle==3.0.0
 
-# Reinstall numpy to ensure correct version
-RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
-
 # Install paddleocr
 RUN pip install --no-cache-dir "paddleocr>=2.7,<3.0"
-
-# Reinstall numpy again
-RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
-
-# Install Pillow
-RUN pip install --no-cache-dir "Pillow>=10.0.0,<11.0.0"
-
-# Install opencv-python-headless
-RUN pip install --no-cache-dir opencv-python-headless==4.8.1.78
-
-# Install shapely
-RUN pip install --no-cache-dir shapely==1.8.5
-
-# Final numpy reinstall to ensure compatibility
-RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
 # Copy application files
 COPY src/ /app/src/
