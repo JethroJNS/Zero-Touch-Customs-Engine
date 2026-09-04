@@ -29,11 +29,18 @@ RUN pip install --no-cache-dir \
     torchvision==0.16.0 \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Install core dependencies FIRST (without conflicting libs)
-RUN pip install --no-cache-dir \
-    "numpy>=1.24.0,<2.0"
+# CRITICAL: Install numpy FIRST and create constraint file
+RUN pip install --no-cache-dir "numpy>=1.24.0,<2.0" && \
+    pip freeze | grep numpy > /tmp/numpy_ver.txt && \
+    cat /tmp/numpy_ver.txt
 
-# Install main dependencies
+# Install scipy and scikit-image FIRST with numpy constraint (they need compatible numpy)
+RUN pip install --no-cache-dir \
+    scipy==1.11.4 \
+    scikit-image==0.22.0 \
+    --constraint /tmp/numpy_ver.txt
+
+# Install other dependencies that don't conflict
 RUN pip install --no-cache-dir \
     fastapi \
     uvicorn[standard] \
@@ -52,29 +59,28 @@ RUN pip install --no-cache-dir \
     seqeval \
     tqdm
 
-# Install paddle dependencies with specific numpy (IMPORTANT: order matters)
-RUN pip install --no-cache-dir \
-    paddlepaddle==3.0.0
+# Install paddlepaddle
+RUN pip install --no-cache-dir paddlepaddle==3.0.0
 
-# Force numpy after paddlepaddle
+# Reinstall numpy to ensure correct version
 RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
 # Install paddleocr
 RUN pip install --no-cache-dir "paddleocr>=2.7,<3.0"
 
-# Force numpy again after paddleocr
+# Reinstall numpy again
 RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
-# Install Pillow last with numpy pinned
+# Install Pillow
 RUN pip install --no-cache-dir "Pillow>=10.0.0,<11.0.0"
 
-# Install opencv-python-headless (tanpa GUI, compatible dengan numpy 1.x)
+# Install opencv-python-headless
 RUN pip install --no-cache-dir opencv-python-headless==4.8.1.78
 
-# Install shapely versi lama yang kompatibel dengan numpy 1.x
+# Install shapely
 RUN pip install --no-cache-dir shapely==1.8.5
 
-# Force numpy final time
+# Final numpy reinstall to ensure compatibility
 RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
 # Copy application files
