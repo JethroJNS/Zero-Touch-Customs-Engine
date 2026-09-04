@@ -71,6 +71,9 @@ RUN pip install --no-cache-dir "Pillow>=10.0.0,<11.0.0"
 # Install opencv-python-headless (tanpa GUI, compatible dengan numpy 1.x)
 RUN pip install --no-cache-dir opencv-python-headless==4.8.1.78
 
+# Install shapely versi lama yang kompatibel dengan numpy 1.x
+RUN pip install --no-cache-dir shapely==1.8.5
+
 # Force numpy final time
 RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
