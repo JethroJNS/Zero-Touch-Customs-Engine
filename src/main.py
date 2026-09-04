@@ -133,30 +133,30 @@ def create_app() -> FastAPI:
             os.environ.setdefault("OMP_NUM_THREADS", "1")
             os.environ.setdefault("MKL_NUM_THREADS", "1")
             os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+            os.environ.setdefault("PYTORCH_DISABLE_INIT", "1")
 
             import torch
             torch.set_num_threads(1)
-            torch.set_flush_denormal(True)  # Matikan denormal floats (lebih cepat, hemat memory)
+            torch.set_flush_denormal(True)
 
             logger.info("Pre-warming OCR engine (downloading PaddleOCR models if needed)...")
-            from ml.src.ocr.engine import OCREngine
-            engine = OCREngine()
-            # Run a dummy OCR to force model download and loading
-            dummy_img = None
+
+            # Import dan init OCR dengan cara yang lebih safe
             try:
+                from ml.src.ocr.engine import OCREngine
+                engine = OCREngine()
+
+                # Test dengan dummy image
                 import numpy as np
                 from PIL import Image
-                # 1x1 white image untuk warm-up
                 dummy_img = Image.new("RGB", (100, 20), color=(255, 255, 255))
                 engine._process_image(dummy_img, 0)
                 logger.info("OCR engine pre-warmed successfully.")
-            except Exception as e:
-                logger.warning(f"OCR warm-up inference failed (non-fatal): {e}")
-            finally:
-                del dummy_img
-                gc.collect()
+            except Exception as ocr_error:
+                logger.warning(f"OCR warm-up failed (will use lazy init): {ocr_error}")
+                # OCR will be initialized lazily when first request comes
         except Exception as e:
-            logger.error(f"Failed to pre-warm OCR engine: {e}")
+            logger.warning(f"OCR prewarm skipped: {e}")
 
     # Register routers
     from routes.shipments import router as shipments_router
