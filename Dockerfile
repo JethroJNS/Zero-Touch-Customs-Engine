@@ -68,6 +68,9 @@ RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 # Install Pillow last with numpy pinned
 RUN pip install --no-cache-dir "Pillow>=10.0.0,<11.0.0"
 
+# Install opencv-python-headless (tanpa GUI, compatible dengan numpy 1.x)
+RUN pip install --no-cache-dir opencv-python-headless==4.8.1.78
+
 # Force numpy final time
 RUN pip install --no-cache-dir --force-reinstall "numpy>=1.24.0,<2.0"
 
