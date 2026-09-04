@@ -44,10 +44,9 @@ def create_app() -> FastAPI:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _create_tables)
         await loop.run_in_executor(None, _seed_data)
-        # Download LayoutLM model from Google Drive FIRST (before OCR warm-up)
-        await loop.run_in_executor(None, _download_layoutlm_model)
-        # Pre-warm PaddleOCR agar model di-download SEBELUM request pertama
-        await loop.run_in_executor(None, _prewarm_ocr)
+        # NOTE: LayoutLM and OCR models are loaded LAZILY on first request
+        # to prevent OOM at startup on memory-constrained environments
+        logger.info("Startup complete. Models will be loaded on first request.")
 
     def _create_tables():
         try:

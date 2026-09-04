@@ -23,21 +23,32 @@ router = APIRouter(prefix="/api", tags=["shipments"])
 ALLOWED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp"}
 MAX_FILE_SIZE_MB = 20
 
-ENGINE_AVAILABLE = False
-HybridExtractor = None
-ExcelExporter = None
+# Lazy loading to prevent OOM at startup
+_engine_cache = {"extractor": None, "exporter": None}
 
-try:
-    ENGINE_DIR = Path(__file__).parent.parent.parent / "ml"
-    import sys
-    sys.path.insert(0, str(ENGINE_DIR))
-    from ml.src.extraction.hybrid_engine import HybridExtractor as _HE
-    from ml.src.excel.exporter import ExcelExporter as _EE
-    HybridExtractor = _HE
-    ExcelExporter = _EE
-    ENGINE_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"OCR Engine not available: {e}")
+
+def get_engine():
+    """Lazy load extraction engine only when needed."""
+    if _engine_cache["extractor"] is None:
+        import sys
+        from pathlib import Path
+        ENGINE_DIR = Path(__file__).parent.parent.parent / "ml"
+        sys.path.insert(0, str(ENGINE_DIR))
+        from ml.src.extraction.hybrid_engine import HybridExtractor
+        _engine_cache["extractor"] = HybridExtractor
+    return _engine_cache["extractor"]
+
+
+def get_exporter():
+    """Lazy load Excel exporter only when needed."""
+    if _engine_cache["exporter"] is None:
+        import sys
+        from pathlib import Path
+        ENGINE_DIR = Path(__file__).parent.parent.parent / "ml"
+        sys.path.insert(0, str(ENGINE_DIR))
+        from ml.src.excel.exporter import ExcelExporter
+        _engine_cache["exporter"] = ExcelExporter
+    return _engine_cache["exporter"]
 
 
 def generate_reference_code() -> str:
@@ -430,7 +441,10 @@ async def create_shipment(request: Request, db: AsyncSession = Depends(get_db)):
 @router.post("/extract")
 async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)):
     # Jalankan pipeline OCR+ekstraksi pada dokumen CI, PL, BL.
-    if not ENGINE_AVAILABLE or HybridExtractor is None:
+    try:
+        extractor_class = get_engine()
+    except ImportError as e:
+        logger.error(f"Failed to load extraction engine: {e}")
         raise HTTPException(
             status_code=503,
             detail="OCR extraction engine not available.",
@@ -505,7 +519,7 @@ async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)
         logger.info("Starting extraction pipeline...")
         t0 = __import__("time").time()
 
-        extractor = HybridExtractor(
+        extractor = extractor_class(
             use_gpu=False,
             layout_confidence_threshold=0.05,
             use_vision_fallback=False,
@@ -526,7 +540,8 @@ async def extract_documents(request: Request, db: AsyncSession = Depends(get_db)
         excel_filename = f"{final_shipment_id}_ceisa.xlsx"
         excel_path = work_dir / excel_filename
 
-        exporter = ExcelExporter()
+        exporter_class = get_exporter()
+        exporter = exporter_class()
         exporter.export(
             entities=result.entities,
             shipment_id=final_shipment_id,
